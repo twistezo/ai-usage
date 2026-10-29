@@ -2,6 +2,19 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [SemVer](https://semver.org/).
 
+## [1.2.0] - 2026-10-30
+
+Compact window.
+
+### Added
+- Compact mode for the standalone window: one row per provider with 5h and 1w usage and mini bars; resets in the tooltip, problems as a warning icon, login right in the row. The choice is remembered.
+- The standalone window can be dragged from any spot that is not a button.
+- CI workflow on GitHub Actions: TypeScript and Rust tests, frontend and production app builds.
+
+### Changed
+- Standalone window buttons show icons only; their names appear on hover.
+- README: installation steps for the prebuilt app, first launch on macOS, screenshots.
+
 ## [1.1.0] - 2026-10-29
 
 Security and error-handling reviews.

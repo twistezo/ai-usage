@@ -17,11 +17,13 @@ const VIEW_MODES = ["panel", "window"] as const;
 export type ViewMode = (typeof VIEW_MODES)[number];
 
 // `notice` reports a failed action, e.g. a window that did not open.
+// `compact` shrinks the standalone window to one row per provider.
 export type PanelView = {
   mode: ViewMode;
   states: UsageStates;
   refreshing: boolean;
   alwaysOnTop: boolean;
+  compact: boolean;
   notice: string | null;
 };
 
@@ -29,6 +31,7 @@ export type PanelActions = {
   onRefresh: () => void;
   onOpenWindow: () => void;
   onToggleAlwaysOnTop: () => void;
+  onToggleCompact: () => void;
   onClose: () => void;
   onLogin: (provider: ProviderId) => void;
   onHelp: () => void;
@@ -201,6 +204,65 @@ const renderProvider = (
   return section;
 };
 
+const createIcon = (icon: IconName, hint: string): HTMLElement => {
+  const element = createElement("span", "icon");
+  element.title = hint;
+  // Trusted markup bundled from @tabler/icons.
+  element.innerHTML = ICONS[icon];
+
+  return element;
+};
+
+// "29% 5h" with a mini bar next to it.
+const renderCompactMeter = (label: string, usageWindow: UsageWindow, now: Date): HTMLElement => {
+  const meter = createElement("div", "compact-meter");
+  meter.title = formatReset(usageWindow.resetsAt, now);
+  const bar = createElement("div", "bar");
+  const fill = createElement("div", "bar-fill");
+  fill.style.width = `${Math.min(Math.max(usageWindow.utilization, 0), 100)}%`;
+  bar.append(fill);
+  meter.append(
+    createElement("span", "usage-percent", formatPercent(usageWindow.utilization)),
+    createElement("span", "usage-label", label),
+    bar,
+  );
+
+  return meter;
+};
+
+// One row: name, 5h and 1w. Problems shrink to a warning icon whose tooltip explains them.
+const renderCompactProvider = (
+  provider: ProviderId,
+  state: ProviderState,
+  now: Date,
+  actions: PanelActions,
+): HTMLElement => {
+  const row = createElement("section", `compact-row provider-${provider}`);
+  row.append(createElement("span", "provider-name", PROVIDER_INFO[provider].name));
+
+  if (state.needsLogin) {
+    row.append(createButton("link-button", "Log in", () => actions.onLogin(provider)));
+  } else if (state.usage) {
+    row.append(
+      renderCompactMeter("5h", state.usage.fiveHour, now),
+      renderCompactMeter("1w", state.usage.sevenDay, now),
+    );
+  } else {
+    row.append(createElement("span", "empty", state.error ? "No data" : "Waiting…"));
+  }
+
+  const problem =
+    state.error ??
+    (state.usage && isStale(state.usage, now)
+      ? `Outdated: no successful update for over ${STALE_AFTER_MINUTES} minutes`
+      : null);
+  if (problem) {
+    row.append(createIcon("alert", problem));
+  }
+
+  return row;
+};
+
 export const renderPanel = (
   root: HTMLElement,
   view: PanelView,
@@ -230,11 +292,25 @@ export const renderPanel = (
 
   const header = createElement("header", "panel-header");
   header.append(secondary, refresh);
-  // The window has no title bar, so its header closes and moves it.
+  // The window has no title bar, so its header closes it.
   if (view.mode === "window") {
+    const toggleCompact = view.compact
+      ? createIconButton("expand", "Expand", "Show full details", actions.onToggleCompact)
+      : createIconButton("compact", "Compact", "Show one row per provider", actions.onToggleCompact);
+    header.insertBefore(toggleCompact, refresh);
     header.append(createIconButton("close", "Close", "Close the window", actions.onClose));
-    header.dataset.tauriDragRegion = "";
   }
+  const compact = view.mode === "window" && view.compact;
+  root.classList.toggle("compact", compact);
+  // The window's buttons show icons only; their hints still name them.
+  root.classList.toggle("icon-only", view.mode === "window");
+  // The whole window moves by dragging any spot that is not a button or link.
+  if (view.mode === "window") {
+    root.dataset.tauriDragRegion = "deep";
+  } else {
+    delete root.dataset.tauriDragRegion;
+  }
+  const renderSection = compact ? renderCompactProvider : renderProvider;
 
   // The standalone window has the app menu and the Dock for these, so it skips the footer.
   const footer = createElement("footer", "panel-footer");
@@ -246,7 +322,7 @@ export const renderPanel = (
   root.replaceChildren(
     header,
     ...(view.notice ? [createElement("div", "error notice", view.notice)] : []),
-    ...PROVIDERS.map((provider) => renderProvider(provider, view.states[provider], now, actions)),
+    ...PROVIDERS.map((provider) => renderSection(provider, view.states[provider], now, actions)),
     ...(view.mode === "panel" ? [footer] : []),
   );
 };

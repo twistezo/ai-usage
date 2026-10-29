@@ -28,6 +28,7 @@ const REPORT_EVENT = "usage-report";
 // Must match WINDOW_LABEL in src-tauri/src/lib.rs.
 const WINDOW_LABEL = "window";
 const ALWAYS_ON_TOP_KEY = "always-on-top";
+const COMPACT_KEY = "compact";
 
 const NO_ANSWER = "No answer from the site yet. It retries every minute.";
 const REFRESH_FAILED = "Could not start the refresh. It retries every minute.";
@@ -48,6 +49,7 @@ const view: PanelView = {
   states: createEmptyStates(),
   refreshing: false,
   alwaysOnTop: mode === "window" && readFlag(localStorage, ALWAYS_ON_TOP_KEY),
+  compact: mode === "window" && readFlag(localStorage, COMPACT_KEY),
   notice: null,
 };
 
@@ -109,10 +111,18 @@ if (app) {
       render();
     }, "Could not change keeping the window on top.");
 
+  // Only the page changes, so this cannot fail; the window then fits the new height.
+  const toggleCompact = (): void => {
+    view.compact = !view.compact;
+    saveFlag(localStorage, COMPACT_KEY, view.compact);
+    render();
+  };
+
   const actions: PanelActions = {
     onRefresh: () => void refresh(),
     onOpenWindow: () => void attempt(() => invoke("open_window"), "Could not open the window."),
     onToggleAlwaysOnTop: () => void toggleAlwaysOnTop(),
+    onToggleCompact: toggleCompact,
     onClose: () => void attempt(() => currentWindow.close(), "Could not close the window."),
     onLogin: (provider) =>
       void attempt(

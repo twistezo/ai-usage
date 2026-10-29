@@ -248,6 +248,68 @@ html[data-mode] #app {
   }
 }
 
+.icon-only .icon-button-label {
+  display: none;
+}
+
+/* Compact window: one row per provider. */
+.compact .panel-header {
+  margin-bottom: 8px;
+}
+
+.compact-row {
+  display: grid;
+  grid-template-columns: 52px 1fr 1fr auto;
+  align-items: center;
+  column-gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--separator);
+}
+
+.compact-row .provider-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand);
+}
+
+.compact-meter {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.compact-meter .bar {
+  flex: 1;
+  height: 4px;
+  margin: 0;
+  align-self: center;
+}
+
+.compact-row .empty,
+.compact-row .link-button {
+  grid-column: 2 / 4;
+}
+
+.link-button {
+  padding: 0;
+  border: none;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  color: var(--accent);
+  background: none;
+}
+
+.icon {
+  display: flex;
+  color: var(--warning);
+}
+
+.icon svg {
+  width: 14px;
+  height: 14px;
+}
+
 .login {
   width: 100%;
   margin-top: 6px;

@@ -24,6 +24,7 @@ const createActions = (): PanelActions => ({
   onRefresh: vi.fn(),
   onOpenWindow: vi.fn(),
   onToggleAlwaysOnTop: vi.fn(),
+  onToggleCompact: vi.fn(),
   onClose: vi.fn(),
   onLogin: vi.fn(),
   onHelp: vi.fn(),
@@ -36,7 +37,7 @@ let actions: PanelActions;
 const render = (view: Partial<PanelView> = {}): void => {
   renderPanel(
     root,
-    { mode: "panel", states: createEmptyStates(), refreshing: false, alwaysOnTop: false, notice: null, ...view },
+    { mode: "panel", states: createEmptyStates(), refreshing: false, alwaysOnTop: false, compact: false, notice: null, ...view },
     now,
     actions,
   );
@@ -209,14 +210,123 @@ describe("renderPanel: controls", () => {
 
     expect(actions.onToggleAlwaysOnTop).toHaveBeenCalledOnce();
     expect(actions.onClose).toHaveBeenCalledOnce();
-    expect(root.querySelector("header")?.hasAttribute("data-tauri-drag-region")).toBe(true);
+    expect(root.dataset.tauriDragRegion).toBe("deep");
     expect(root.querySelector("footer")).toBeNull();
     expect(root.textContent).not.toContain("Window");
+  });
+
+  it("shows icon-only buttons in the window, in full and compact mode alike", () => {
+    render({ mode: "window" });
+    const full = root.classList.contains("icon-only");
+    render({ mode: "window", compact: true });
+
+    expect([full, root.classList.contains("icon-only")]).toEqual([true, true]);
+    expect(buttonByText("Close").title).toBe("Close the window");
+  });
+
+  it("keeps labelled buttons in the menu bar panel", () => {
+    render();
+
+    expect(root.classList.contains("icon-only")).toBe(false);
+  });
+
+  it("lets the menu bar panel stay in place", () => {
+    render({ mode: "window" });
+    render({ mode: "panel" });
+
+    expect(root.hasAttribute("data-tauri-drag-region")).toBe(false);
   });
 
   it("shows the pinned state in the window", () => {
     render({ mode: "window", alwaysOnTop: true });
 
     expect(buttonByText("Pinned").classList.contains("active")).toBe(true);
+  });
+});
+
+describe("renderPanel: compact window", () => {
+  const states = {
+    codex: reading({ fiveHour: { utilization: 29, resetsAt: later(260) } }),
+    claude: reading({ sevenDay: { utilization: 46, resetsAt: later(2 * 1440 + 15 * 60) } }),
+  };
+
+  it("shows one row per provider with percent, window label and bar", () => {
+    render({ mode: "window", compact: true, states });
+
+    const rows = [...root.querySelectorAll(".compact-row")];
+    expect(rows.map((row) => row.querySelector(".provider-name")?.textContent)).toEqual(["Codex", "Claude"]);
+    expect([...rows[0].querySelectorAll(".compact-meter")].map((meter) => meter.textContent)).toEqual([
+      "29%5h",
+      "38%1w",
+    ]);
+    expect(rows[0].querySelectorAll(".bar-fill")).toHaveLength(2);
+  });
+
+  it("leaves out resets, plan and extra usage, but keeps the reset in the tooltip", () => {
+    render({
+      mode: "window",
+      compact: true,
+      states: { ...states, claude: reading({ extra: { kind: "credits", unlimited: true, balance: 0 } }) },
+    });
+
+    expect(root.querySelector(".usage-reset")).toBeNull();
+    expect(root.querySelector(".provider-plan")).toBeNull();
+    expect(root.textContent).not.toContain("Extra");
+    expect(root.querySelector<HTMLElement>(".compact-meter")?.title).toBe("↻ 4h 20m");
+  });
+
+  it("names the expand button in its hint", () => {
+    render({ mode: "window", compact: true, states });
+
+    expect(buttonByText("Expand").title).toBe("Show full details");
+  });
+
+  it("switches between compact and full with one button", () => {
+    render({ mode: "window", states });
+    buttonByText("Compact").click();
+
+    expect(actions.onToggleCompact).toHaveBeenCalledOnce();
+    expect(root.classList.contains("compact")).toBe(false);
+    expect(root.querySelector(".compact-row")).toBeNull();
+  });
+
+  it("flags a failed refresh with a warning that explains it on hover", () => {
+    render({ mode: "window", compact: true, states: { ...states, codex: { ...states.codex, error: "No connection." } } });
+
+    expect(root.querySelector<HTMLElement>(".provider-codex .icon")?.title).toBe("No connection.");
+    expect(root.querySelector(".provider-claude .icon")).toBeNull();
+  });
+
+  it("flags an outdated reading the same way", () => {
+    render({ mode: "window", compact: true, states: { ...states, claude: reading({ readAt: later(-6) }) } });
+
+    expect(root.querySelector<HTMLElement>(".provider-claude .icon")?.title).toBe(
+      "Outdated: no successful update for over 5 minutes",
+    );
+  });
+
+  it("offers login right in the row when the session expired", () => {
+    render({
+      mode: "window",
+      compact: true,
+      states: { ...states, claude: { usage: null, error: "Session expired or needs verification.", needsLogin: true } },
+    });
+
+    buttonByText("Log in").click();
+
+    expect(actions.onLogin).toHaveBeenCalledWith("claude");
+  });
+
+  it("says when a provider has no data yet", () => {
+    render({ mode: "window", compact: true });
+
+    expect(root.querySelector(".provider-codex .empty")?.textContent).toBe("Waiting…");
+  });
+
+  it("never compacts the menu bar panel", () => {
+    render({ mode: "panel", compact: true, states });
+
+    expect(root.querySelector(".compact-row")).toBeNull();
+    expect(root.textContent).not.toContain("Compact");
   });
 });
