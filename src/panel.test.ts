@@ -36,7 +36,7 @@ let actions: PanelActions;
 const render = (view: Partial<PanelView> = {}): void => {
   renderPanel(
     root,
-    { mode: "panel", states: createEmptyStates(), refreshing: false, alwaysOnTop: false, ...view },
+    { mode: "panel", states: createEmptyStates(), refreshing: false, alwaysOnTop: false, notice: null, ...view },
     now,
     actions,
   );
@@ -161,6 +161,22 @@ describe("renderPanel: problems", () => {
 
     expect(root.querySelector("img")).toBeNull();
     expect(section("claude").querySelector(".error")?.textContent).toBe(injected);
+  });
+});
+
+describe("renderPanel: failed actions", () => {
+  it("explains an action that failed, right under the header", () => {
+    render({ notice: "Could not open the window." });
+
+    const notice = root.querySelector(".notice");
+    expect(notice?.textContent).toBe("Could not open the window.");
+    expect(notice?.previousElementSibling?.tagName).toBe("HEADER");
+  });
+
+  it("shows no notice when nothing failed", () => {
+    render();
+
+    expect(root.querySelector(".notice")).toBeNull();
   });
 });
 

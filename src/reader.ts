@@ -33,11 +33,12 @@ const parseJson = (text: string): unknown => {
 };
 
 // A missing window means it has not started yet; anything malformed returns null.
+// A window must state its utilization: null counts as unused, a missing field as malformed.
 const parseWindow = (value: unknown): UsageWindow | null => {
   if (value === null || value === undefined) {
     return { utilization: 0, resetsAt: null };
   }
-  if (!isRecord(value)) {
+  if (!isRecord(value) || !("utilization" in value)) {
     return null;
   }
 
@@ -63,6 +64,24 @@ const parseWindow = (value: unknown): UsageWindow | null => {
 
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
+
+// Codex sends the balance as text, e.g. "0". Only a number or numeric text counts;
+// Number() alone would accept lists and booleans and throws on some objects.
+const parseAmount = (value: unknown): number | null => {
+  if (value === null || value === undefined) {
+    return 0;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value !== "string" || value.trim() === "") {
+    return null;
+  }
+
+  const amount = Number(value);
+
+  return Number.isFinite(amount) ? amount : null;
+};
 
 // Currencies use 0 to 4 decimal places; anything else is not a real currency format.
 const MAX_DECIMAL_PLACES = 4;
@@ -101,9 +120,8 @@ const parseExtra = (value: unknown): ExtraUsage | null => {
 
   if (value.kind === "credits") {
     const { unlimited } = value;
-    // Codex sends the balance as text, e.g. "0".
-    const balance = Number(value.balance ?? 0);
-    if (typeof unlimited !== "boolean" || !Number.isFinite(balance)) {
+    const balance = parseAmount(value.balance);
+    if (typeof unlimited !== "boolean" || balance === null) {
       return null;
     }
 

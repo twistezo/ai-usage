@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { IDLE, readFlag, receiveReport, saveFlag, startRefresh } from "./refresh";
+import {
+  IDLE,
+  markUnanswered,
+  readFlag,
+  receiveReport,
+  saveFlag,
+  startRefresh,
+  togglePersisted,
+} from "./refresh";
+import { createEmptyStates, type ProviderState } from "./usage";
 
 describe("manual refresh", () => {
   it("stays in progress until both providers have reported", () => {
@@ -31,6 +40,83 @@ describe("manual refresh", () => {
     receiveReport(restarted, "codex");
 
     expect(receiveReport(restarted, "claude").refreshing).toBe(true);
+  });
+});
+
+describe("providers that never answered", () => {
+  const now = new Date("2026-10-29T12:00:00Z");
+  const lastReading: ProviderState = {
+    usage: {
+      plan: "plus",
+      fiveHour: { utilization: 34, resetsAt: null },
+      sevenDay: { utilization: 27, resetsAt: null },
+      extra: null,
+      readAt: new Date("2026-10-29T11:59:00Z"),
+    },
+    error: null,
+    needsLogin: false,
+  };
+
+  it("get a visible error and keep their last reading", () => {
+    const states = { ...createEmptyStates(), codex: lastReading };
+
+    const next = markUnanswered(states, new Set(["codex"] as const), "No answer.", now);
+
+    expect(next.codex).toEqual({ ...lastReading, error: "No answer." });
+  });
+
+  it("leave providers that answered untouched", () => {
+    const states = { ...createEmptyStates(), claude: lastReading };
+
+    const next = markUnanswered(states, new Set(["codex"] as const), "No answer.", now);
+
+    expect(next.claude).toBe(lastReading);
+    expect(next.codex.error).toBe("No answer.");
+  });
+
+  it("replace the endless wait for a first reading with the error", () => {
+    const next = markUnanswered(createEmptyStates(), startRefresh().pending, "No answer.", now);
+
+    expect([next.codex.error, next.claude.error]).toEqual(["No answer.", "No answer."]);
+    expect(next.codex.usage).toBeNull();
+  });
+
+  it("change nothing when everyone answered", () => {
+    const states = { ...createEmptyStates(), codex: lastReading };
+
+    expect(markUnanswered(states, IDLE.pending, "No answer.", now)).toEqual(states);
+  });
+});
+
+describe("toggling a stored window setting", () => {
+  it("applies the new value and then stores it", async () => {
+    const applied: boolean[] = [];
+    const saved: boolean[] = [];
+
+    const next = await togglePersisted(
+      false,
+      async (value) => void applied.push(value),
+      (value) => void saved.push(value),
+    );
+
+    expect(next).toBe(true);
+    expect(applied).toEqual([true]);
+    expect(saved).toEqual([true]);
+  });
+
+  it("stores nothing when the window refuses the change", async () => {
+    const saved: boolean[] = [];
+
+    const toggle = togglePersisted(
+      true,
+      async () => {
+        throw new Error("Window gone");
+      },
+      (value) => void saved.push(value),
+    );
+
+    await expect(toggle).rejects.toThrow("Window gone");
+    expect(saved).toEqual([]);
   });
 });
 

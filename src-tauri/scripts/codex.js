@@ -21,8 +21,8 @@ const readUsage = async () => {
     return { status: 'http_error', step: 'usage', http_status: usage.status };
   }
 
-  const limits = usage.data.rate_limit;
-  if (!limits) {
+  const limits = usage.data && usage.data.rate_limit;
+  if (!limits || typeof limits !== 'object') {
     return { status: 'unexpected_response' };
   }
 

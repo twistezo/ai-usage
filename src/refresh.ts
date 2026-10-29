@@ -1,4 +1,5 @@
-import { PROVIDERS, type ProviderId } from "./usage";
+import { applyReadResult } from "./reader";
+import { PROVIDERS, type ProviderId, type UsageStates } from "./usage";
 
 // A manual refresh lasts until every provider has reported back.
 // Readings also arrive on their own every minute; those never start or end a refresh.
@@ -20,6 +21,35 @@ export const receiveReport = (state: RefreshState, provider: ProviderId): Refres
   pending.delete(provider);
 
   return pending.size === 0 ? IDLE : { refreshing: true, pending };
+};
+
+// Providers that never answered get a visible error; their last reading stays.
+export const markUnanswered = (
+  states: UsageStates,
+  providers: ReadonlySet<ProviderId>,
+  message: string,
+  now: Date,
+): UsageStates => {
+  const next = { ...states };
+  for (const provider of providers) {
+    next[provider] = applyReadResult(states[provider], { kind: "error", message }, now);
+  }
+
+  return next;
+};
+
+// Applies the new value first and stores it only once that worked, so a failure
+// leaves both the window and the stored preference unchanged.
+export const togglePersisted = async (
+  current: boolean,
+  apply: (value: boolean) => Promise<void>,
+  save: (value: boolean) => void,
+): Promise<boolean> => {
+  const next = !current;
+  await apply(next);
+  save(next);
+
+  return next;
 };
 
 // A per-viewer convenience, so a storage failure only loses the preference.

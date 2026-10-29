@@ -165,6 +165,10 @@ html[data-mode] #app {
   color: var(--warning);
 }
 
+.notice {
+  margin: 0 0 10px;
+}
+
 .error {
   margin-top: 8px;
   padding: 6px 8px;

@@ -6,13 +6,15 @@ import { renderPanel, type PanelActions, type PanelView, type ViewMode } from ".
 import { applyReadResult, parseReaderOutput } from "./reader";
 import {
   IDLE,
+  markUnanswered,
   readFlag,
   receiveReport,
   saveFlag,
   startRefresh,
+  togglePersisted,
   type RefreshState,
 } from "./refresh";
-import { createEmptyStates, type ProviderId } from "./usage";
+import { createEmptyStates, PROVIDERS, PROVIDER_INFO, type ProviderId } from "./usage";
 import { fitWindowToContent } from "./window-size";
 
 const PANEL_WIDTH = 340;
@@ -26,6 +28,10 @@ const REPORT_EVENT = "usage-report";
 // Must match WINDOW_LABEL in src-tauri/src/lib.rs.
 const WINDOW_LABEL = "window";
 const ALWAYS_ON_TOP_KEY = "always-on-top";
+
+const NO_ANSWER = "No answer from the site yet. It retries every minute.";
+const REFRESH_FAILED = "Could not start the refresh. It retries every minute.";
+const READER_UNAVAILABLE = "Could not connect to the background reader. Restart the app.";
 
 type UsageReport = {
   provider: ProviderId;
@@ -42,6 +48,7 @@ const view: PanelView = {
   states: createEmptyStates(),
   refreshing: false,
   alwaysOnTop: mode === "window" && readFlag(localStorage, ALWAYS_ON_TOP_KEY),
+  notice: null,
 };
 
 if (app) {
@@ -61,39 +68,59 @@ if (app) {
     }
   };
 
-  const finishRefresh = (): void => setRefreshState(IDLE);
+  // Ends the refresh; providers still waiting get `message` instead of silence.
+  const failPending = (message: string): void => {
+    view.states = markUnanswered(view.states, refreshState.pending, message, new Date());
+    setRefreshState(IDLE);
+    render();
+  };
 
   const refresh = async (): Promise<void> => {
+    window.clearTimeout(refreshTimeout);
     setRefreshState(startRefresh());
     render();
-    refreshTimeout = window.setTimeout(() => {
-      finishRefresh();
-      render();
-    }, REFRESH_TIMEOUT_MS);
+    refreshTimeout = window.setTimeout(() => failPending(NO_ANSWER), REFRESH_TIMEOUT_MS);
 
     try {
       await invoke("refresh_usage");
     } catch {
-      finishRefresh();
+      failPending(REFRESH_FAILED);
+    }
+  };
+
+  // Runs a window action and explains a failure in the panel instead of doing nothing.
+  const attempt = async (task: () => Promise<unknown>, failure: string): Promise<void> => {
+    view.notice = null;
+    try {
+      await task();
+    } catch {
+      view.notice = failure;
       render();
     }
   };
 
-  const toggleAlwaysOnTop = async (): Promise<void> => {
-    view.alwaysOnTop = !view.alwaysOnTop;
-    saveFlag(localStorage, ALWAYS_ON_TOP_KEY, view.alwaysOnTop);
-    render();
-    await currentWindow.setAlwaysOnTop(view.alwaysOnTop);
-  };
+  const toggleAlwaysOnTop = (): Promise<void> =>
+    attempt(async () => {
+      view.alwaysOnTop = await togglePersisted(
+        view.alwaysOnTop,
+        (value) => currentWindow.setAlwaysOnTop(value),
+        (value) => saveFlag(localStorage, ALWAYS_ON_TOP_KEY, value),
+      );
+      render();
+    }, "Could not change keeping the window on top.");
 
   const actions: PanelActions = {
     onRefresh: () => void refresh(),
-    onOpenWindow: () => void invoke("open_window"),
+    onOpenWindow: () => void attempt(() => invoke("open_window"), "Could not open the window."),
     onToggleAlwaysOnTop: () => void toggleAlwaysOnTop(),
-    onClose: () => void currentWindow.close(),
-    onLogin: (provider) => void invoke("open_login", { provider }),
-    onHelp: () => void invoke("open_help"),
-    onQuit: () => void invoke("quit"),
+    onClose: () => void attempt(() => currentWindow.close(), "Could not close the window."),
+    onLogin: (provider) =>
+      void attempt(
+        () => invoke("open_login", { provider }),
+        `Could not open the ${PROVIDER_INFO[provider].account} login window.`,
+      ),
+    onHelp: () => void attempt(() => invoke("open_help"), "Could not open Help & about."),
+    onQuit: () => void attempt(() => invoke("quit"), "Could not quit. Try again."),
   };
 
   // Readings arrive from hidden windows: every minute and after each refresh.
@@ -103,7 +130,12 @@ if (app) {
     view.states[payload.provider] = applyReadResult(view.states[payload.provider], result, new Date());
     setRefreshState(receiveReport(refreshState, payload.provider));
     render();
-  }).then(() => invoke("refresh_usage"));
+  })
+    .then(() => refresh())
+    .catch(() => {
+      view.states = markUnanswered(view.states, new Set(PROVIDERS), READER_UNAVAILABLE, new Date());
+      render();
+    });
 
   render();
   if (view.alwaysOnTop) {

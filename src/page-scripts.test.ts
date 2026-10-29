@@ -148,6 +148,35 @@ describe("claude.js", () => {
     expect(await readUsage()).toEqual({ status: "http_error", step: "usage", http_status: 401 });
   });
 
+  // A changed or broken response must surface as an error, never as a calm 0%.
+  it.each([
+    ["an empty object", {}],
+    ["a window given as text", { five_hour: "invalid", seven_day: claudeUsage.seven_day }],
+    ["windows given as lists", { five_hour: [], seven_day: [] }],
+    ["both windows missing", { extra_usage: claudeUsage.extra_usage }],
+    ["no body at all", null],
+    ["a list", [claudeUsage]],
+  ])("reports a usage response with %s as a format change", async (_, usage) => {
+    const { readUsage } = loadReader(claudeScript, {
+      "/api/organizations": ok([teamOrganization]),
+      "/api/organizations/org-team/usage": ok(usage),
+    });
+
+    expect(await readUsage()).toEqual({ status: "unexpected_response" });
+  });
+
+  it("accepts an unused 5h window next to a weekly one", async () => {
+    const { readUsage } = loadReader(claudeScript, {
+      "/api/organizations": ok([teamOrganization]),
+      "/api/organizations/org-team/usage": ok({ ...claudeUsage, five_hour: null }),
+    });
+
+    const report = await readUsage();
+
+    expect(report.status).toBe("ok");
+    expect(report.five_hour).toBeNull();
+  });
+
   it.each([
     ["an empty organization list", []],
     ["something other than a list", { organizations: [] }],
@@ -271,6 +300,15 @@ describe("codex.js", () => {
     expect(await readUsage()).toEqual({ status: "unexpected_response" });
   });
 
+  it("reports an empty usage body as a format change, not as a network failure", async () => {
+    const { readUsage } = loadReader(codexScript, {
+      "/api/auth/session": ok(codexSession),
+      "/backend-api/wham/usage": ok(null),
+    });
+
+    expect(await readUsage()).toEqual({ status: "unexpected_response" });
+  });
+
   it("reports a missing rate limit as a format change", async () => {
     const { readUsage } = loadReader(codexScript, {
       "/api/auth/session": ok(codexSession),
@@ -300,6 +338,19 @@ describe("codex.js", () => {
 });
 
 describe("page script reports, as the panel parses them", () => {
+  // Regression: a window without its percentage used to show as 0%.
+  it("turns a Claude window without utilization into an error, not 0%", async () => {
+    const { readUsage } = loadReader(claudeScript, {
+      "/api/organizations": ok([teamOrganization]),
+      "/api/organizations/org-team/usage": ok({ ...claudeUsage, five_hour: { resets_at: null } }),
+    });
+
+    expect(parseReaderOutput(JSON.stringify(await readUsage()))).toEqual({
+      kind: "error",
+      message: "Unexpected server response format.",
+    });
+  });
+
   it("turns a Codex reading into panel data", async () => {
     const { readUsage } = loadReader(codexScript, {
       "/api/auth/session": ok(codexSession),

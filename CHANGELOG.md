@@ -2,6 +2,29 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [SemVer](https://semver.org/).
 
+## [1.1.0] - 2026-10-29
+
+Security and error-handling reviews.
+
+### Added
+- Visible errors when a provider does not answer within 20 seconds, when a refresh cannot start, and when the background reader is unavailable.
+- Notice under the header when opening a window, logging in, Help, Close or Quit fails.
+- Rust unit tests: panel position, tray click guard, providers, constants shared across files, window permissions.
+- TypeScript unit tests for refresh state and window sizing.
+
+### Changed
+- The first reading after start uses the regular refresh, so it reports a timeout instead of waiting forever.
+- Pin stores the setting only after the window accepted it.
+- README lists the test commands.
+
+### Fixed
+- Codex and Claude show an error instead of 0% when the usage response has an unknown or broken format, or a window lacks its percentage.
+- An empty usage response is reported as a format change, not as a network failure.
+- A Codex credit balance that is not a number no longer breaks the reading or counts lists and booleans as amounts.
+
+### Security
+- The reader script runs, and reports are accepted, only on `https://claude.ai` and `https://chatgpt.com`; a hidden window that ended up elsewhere is sent back to the site.
+
 ## [1.0.0] - 2026-10-29
 
 Review and release.

@@ -24,6 +24,21 @@ const readUsage = async () => {
     return { status: 'http_error', step: 'usage', http_status: usage.status };
   }
 
+  // A window is an object, or null while unused; a reading with neither window
+  // means the format changed, which must not look like 0%.
+  const data = usage.data;
+  const isWindow = (value) =>
+    value === null || value === undefined || (typeof value === 'object' && !Array.isArray(value));
+  if (
+    !data ||
+    typeof data !== 'object' ||
+    !isWindow(data.five_hour) ||
+    !isWindow(data.seven_day) ||
+    (!data.five_hour && !data.seven_day)
+  ) {
+    return { status: 'unexpected_response' };
+  }
+
   const pick = (value) =>
     value ? { utilization: value.utilization, resets_at: value.resets_at } : null;
 
@@ -37,13 +52,13 @@ const readUsage = async () => {
         : null;
 
   // Paid usage beyond the plan; amounts are in minor units, e.g. cents.
-  const extra = usage.data.extra_usage;
+  const extra = data.extra_usage;
 
   return {
     status: 'ok',
     plan,
-    five_hour: pick(usage.data.five_hour),
-    seven_day: pick(usage.data.seven_day),
+    five_hour: pick(data.five_hour),
+    seven_day: pick(data.seven_day),
     extra: extra
       ? {
           kind: 'spend',

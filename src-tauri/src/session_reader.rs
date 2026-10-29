@@ -2,7 +2,7 @@ use std::{thread, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use tauri::{
-    AppHandle, Emitter, Manager, Url, WebviewUrl, WebviewWindowBuilder,
+    AppHandle, Emitter, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
     utils::config::BackgroundThrottlingPolicy, webview::PageLoadEvent,
 };
 
@@ -33,6 +33,7 @@ pub const PROVIDERS: [Provider; 2] = [Provider::Codex, Provider::Claude];
 struct ProviderSite {
     id: &'static str,
     name: &'static str,
+    host: &'static str,
     home_url: &'static str,
     login_url: &'static str,
     script: &'static str,
@@ -44,6 +45,7 @@ impl Provider {
             Provider::Codex => ProviderSite {
                 id: "codex",
                 name: "ChatGPT",
+                host: "chatgpt.com",
                 home_url: "https://chatgpt.com/",
                 login_url: "https://chatgpt.com/auth/login",
                 script: CODEX_SCRIPT,
@@ -51,6 +53,7 @@ impl Provider {
             Provider::Claude => ProviderSite {
                 id: "claude",
                 name: "Claude",
+                host: "claude.ai",
                 home_url: "https://claude.ai/",
                 login_url: "https://claude.ai/login",
                 script: CLAUDE_SCRIPT,
@@ -79,6 +82,16 @@ struct Report {
     output: String,
 }
 
+/// Only the provider's own site, over HTTPS on the default port, may run the reader
+/// or send reports; a hidden window that ended up anywhere else is ignored.
+fn is_site_url(provider: Provider, url: &Url) -> bool {
+    url.scheme() == "https" && url.port().is_none() && url.host_str() == Some(provider.site().host)
+}
+
+fn shows_site(window: &WebviewWindow, provider: Provider) -> bool {
+    window.url().is_ok_and(|url| is_site_url(provider, &url))
+}
+
 fn reader_script(provider: Provider) -> String {
     format!(
         "(() => {{\n{}\n{}\n}})()",
@@ -102,12 +115,17 @@ fn create_reader(app: &AppHandle, provider: Provider) -> tauri::Result<()> {
     )
     .visible(false)
     .background_throttling(BackgroundThrottlingPolicy::Disabled)
+    // Navigation is not restricted: the check would also block frames such as the
+    // Cloudflare challenge. Instead the reader runs, and reports count, only on the site.
     .on_page_load(move |window, payload| {
-        if payload.event() == PageLoadEvent::Finished {
+        if payload.event() == PageLoadEvent::Finished && is_site_url(provider, payload.url()) {
             let _ = window.eval(reader_script(provider));
         }
     })
-    .on_document_title_changed(move |_, title| {
+    .on_document_title_changed(move |window, title| {
+        if !shows_site(&window, provider) {
+            return;
+        }
         if let Some(output) = title.strip_prefix(TITLE_PREFIX) {
             let report = Report {
                 provider,
@@ -127,7 +145,9 @@ fn create_reader(app: &AppHandle, provider: Provider) -> tauri::Result<()> {
 /// Reads usage once; the result arrives on the panel as a `usage-report` event.
 pub fn refresh(app: &AppHandle, provider: Provider) -> tauri::Result<()> {
     match app.get_webview_window(&provider.reader_label()) {
-        Some(window) => window.eval(reader_script(provider)),
+        Some(window) if shows_site(&window, provider) => window.eval(reader_script(provider)),
+        // Back to the site; its page load runs the reader.
+        Some(window) => window.navigate(parse_url(provider.site().home_url)?),
         // The first page load runs the script.
         None => create_reader(app, provider),
     }
@@ -236,6 +256,41 @@ mod tests {
 
             assert_eq!(home.scheme(), "https");
             assert_eq!(login.host_str(), home.host_str());
+        }
+    }
+
+    #[test]
+    fn site_host_matches_its_home_page() {
+        for provider in PROVIDERS {
+            let home = Url::parse(provider.site().home_url).unwrap();
+
+            assert!(is_site_url(provider, &home));
+        }
+    }
+
+    #[test]
+    fn reader_runs_on_any_page_of_the_providers_site() {
+        let page = Url::parse("https://claude.ai/new?model=opus#top").unwrap();
+
+        assert!(is_site_url(Provider::Claude, &page));
+    }
+
+    // Reports from any other page must be ignored, even when they look alike.
+    #[test]
+    fn reader_refuses_pages_outside_the_providers_site() {
+        for url in [
+            "https://evil.example/",
+            "http://claude.ai/",
+            "https://claude.ai:8443/",
+            "https://claude.ai.evil.example/",
+            "https://evil.claude.ai/",
+            "https://claude.ai@evil.example/",
+            "https://chatgpt.com/",
+            "about:blank",
+        ] {
+            let url = Url::parse(url).unwrap();
+
+            assert!(!is_site_url(Provider::Claude, &url), "{url}");
         }
     }
 

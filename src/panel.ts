@@ -16,11 +16,13 @@ import {
 const VIEW_MODES = ["panel", "window"] as const;
 export type ViewMode = (typeof VIEW_MODES)[number];
 
+// `notice` reports a failed action, e.g. a window that did not open.
 export type PanelView = {
   mode: ViewMode;
   states: UsageStates;
   refreshing: boolean;
   alwaysOnTop: boolean;
+  notice: string | null;
 };
 
 export type PanelActions = {
@@ -243,6 +245,7 @@ export const renderPanel = (
 
   root.replaceChildren(
     header,
+    ...(view.notice ? [createElement("div", "error notice", view.notice)] : []),
     ...PROVIDERS.map((provider) => renderProvider(provider, view.states[provider], now, actions)),
     ...(view.mode === "panel" ? [footer] : []),
   );

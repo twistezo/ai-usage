@@ -75,6 +75,8 @@ describe("parseReaderOutput: malformed readings", () => {
     ["unparseable reset date", { utilization: 10, resets_at: "soon" }],
     ["numeric reset date", { utilization: 10, resets_at: 1793306946 }],
     ["window given as a list", [10]],
+    ["no utilization field", { resets_at: "2026-10-29T20:00:00Z" }],
+    ["an empty window", {}],
   ])("rejects a window with %s", (_, window) => {
     expect(parseReaderOutput(okReport({ five_hour: window }))).toEqual({
       kind: "error",
@@ -110,6 +112,45 @@ describe("parseReaderOutput: malformed readings", () => {
     );
 
     expect(result.kind === "ok" && result.extra).toBeNull();
+  });
+
+  // Regression: Number() threw on this object and the whole report was lost.
+  it("survives a credit balance that cannot be converted to a number", () => {
+    const output =
+      '{"status":"ok","five_hour":{"utilization":10,"resets_at":null},"seven_day":null,' +
+      '"extra":{"kind":"credits","unlimited":false,"balance":{"toString":null}}}';
+
+    expect(() => parseReaderOutput(output)).not.toThrow();
+    expect(parseReaderOutput(output)).toEqual({
+      kind: "ok",
+      plan: null,
+      fiveHour: { utilization: 10, resetsAt: null },
+      sevenDay: { utilization: 0, resetsAt: null },
+      extra: null,
+    });
+  });
+
+  it.each([
+    ["a list", [5]],
+    ["a boolean", true],
+    ["empty text", ""],
+    ["blank text", "  "],
+    ["non-numeric text", "12 USD"],
+    ["an object", { amount: 5 }],
+  ])("ignores a credit balance given as %s", (_, balance) => {
+    const result = parseReaderOutput(okReport({ extra: { kind: "credits", unlimited: false, balance } }));
+
+    expect(result.kind === "ok" && result.extra).toBeNull();
+  });
+
+  it.each([
+    ["a number", 3, 3],
+    ["numeric text", "12.5", 12.5],
+    ["a missing value", undefined, 0],
+  ])("reads a credit balance given as %s", (_, balance, expected) => {
+    const result = parseReaderOutput(okReport({ extra: { kind: "credits", unlimited: false, balance } }));
+
+    expect(result.kind === "ok" && result.extra).toEqual({ kind: "credits", unlimited: false, balance: expected });
   });
 
   it("ignores an unknown extra kind", () => {
