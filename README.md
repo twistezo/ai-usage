@@ -6,10 +6,12 @@ A macOS menu bar app that shows your Codex and Claude subscription usage (5-hour
   <tr>
     <td align="center"><img src="docs/menu-bar-panel.png" alt="Menu bar panel" width="260"></td>
     <td align="center"><img src="docs/window.png" alt="Standalone window" width="260"></td>
+    <td align="center"><img src="docs/window-compact.png" alt="Compact window" width="260"></td>
   </tr>
   <tr>
     <td align="center">Menu bar panel</td>
     <td align="center">Standalone window, pinned on top</td>
+    <td align="center">Compact window</td>
   </tr>
 </table>
 
