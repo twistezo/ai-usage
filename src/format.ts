@@ -1,56 +1,51 @@
 const MINUTE_MS = 60_000;
-const DAY_MS = 24 * 60 * MINUTE_MS;
+const MINUTES_PER_HOUR = 60;
+const MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR;
 
-const LOCALE = "pl-PL";
-const timeFormat = new Intl.DateTimeFormat(LOCALE, { hour: "2-digit", minute: "2-digit" });
-const weekdayTimeFormat = new Intl.DateTimeFormat(LOCALE, {
-  weekday: "short",
-  hour: "2-digit",
-  minute: "2-digit",
+const fullDateTimeFormat = new Intl.DateTimeFormat("en-GB", {
+  dateStyle: "full",
+  timeStyle: "short",
 });
-const dateTimeFormat = new Intl.DateTimeFormat(LOCALE, {
-  day: "numeric",
-  month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-});
+
+// en-US so that USD shows as "$1.18"; other currencies keep their own symbol.
+export const formatMoney = (amount: number, currency: string): string => {
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount);
+  } catch {
+    return `${amount.toFixed(2)} ${currency}`;
+  }
+};
 
 export const formatPercent = (utilization: number): string => `${Math.round(utilization)}%`;
 
+// Two largest units only: "2d 5h", "4h 22m", "45m".
 const formatDuration = (durationMs: number): string => {
   const totalMinutes = Math.ceil(durationMs / MINUTE_MS);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
+  const days = Math.floor(totalMinutes / MINUTES_PER_DAY);
+  const hours = Math.floor((totalMinutes % MINUTES_PER_DAY) / MINUTES_PER_HOUR);
+  const minutes = totalMinutes % MINUTES_PER_HOUR;
 
-  if (hours === 0) {
-    return `${minutes} min`;
+  if (days > 0) {
+    return hours === 0 ? `${days}d` : `${days}d ${hours}h`;
   }
-  if (minutes === 0) {
-    return `${hours} h`;
+  if (hours > 0) {
+    return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
   }
 
-  return `${hours} h ${minutes} min`;
+  return `${minutes}m`;
 };
 
 export const formatReset = (resetsAt: Date | null, now: Date): string => {
   if (!resetsAt) {
-    return "Okno jeszcze się nie rozpoczęło";
+    return "Window not started";
   }
 
   const remainingMs = resetsAt.getTime() - now.getTime();
-
   if (remainingMs <= 0) {
-    return "Reset już nastąpił";
-  }
-  if (remainingMs < DAY_MS) {
-    return `Reset za ${formatDuration(remainingMs)}, o ${timeFormat.format(resetsAt)}`;
+    return "Already reset";
   }
 
-  return `Reset: ${weekdayTimeFormat.format(resetsAt)}`;
+  return `Resets in ${formatDuration(remainingMs)}`;
 };
 
-const isSameDay = (first: Date, second: Date): boolean =>
-  first.toDateString() === second.toDateString();
-
-export const formatReadAt = (readAt: Date, now: Date): string =>
-  isSameDay(readAt, now) ? timeFormat.format(readAt) : dateTimeFormat.format(readAt);
+export const formatFullDate = (date: Date): string => fullDateTimeFormat.format(date);

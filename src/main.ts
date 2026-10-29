@@ -1,78 +1,80 @@
 import { invoke } from "@tauri-apps/api/core";
-import { LogicalSize } from "@tauri-apps/api/dpi";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { renderPanel, type PanelActions, type PanelView } from "./panel";
-import { applyReadResult, readUsage, type ChromeRequirement } from "./reader";
-import { createEmptyStates, PROVIDER_INFO, PROVIDERS, type ProviderId } from "./usage";
+import { applyReadResult, parseReaderOutput } from "./reader";
+import { createEmptyStates, PROVIDERS, type ProviderId } from "./usage";
+import { fitWindowToContent } from "./window-size";
 
 const PANEL_WIDTH = 340;
+// Manual refresh stops showing progress if a hidden page never reports back.
+const REFRESH_TIMEOUT_MS = 20_000;
+// Must match REPORT_EVENT in src-tauri/src/session_reader.rs.
+const REPORT_EVENT = "usage-report";
+
+type UsageReport = {
+  provider: ProviderId;
+  output: string;
+};
 
 const app = document.querySelector<HTMLElement>("#app");
 const view: PanelView = {
   states: createEmptyStates(),
   refreshing: false,
-  chromePrompt: null,
-};
-
-// Panel height follows its content.
-const fitWindowToContent = async (root: HTMLElement): Promise<void> => {
-  const height = Math.ceil(root.getBoundingClientRect().height);
-  await getCurrentWindow().setSize(new LogicalSize(PANEL_WIDTH, height));
 };
 
 if (app) {
+  const pending = new Set<ProviderId>();
+  let refreshTimeout: number | undefined;
+
   const render = (): void => {
     renderPanel(app, view, new Date(), actions);
-    void fitWindowToContent(app);
+    void fitWindowToContent(app, PANEL_WIDTH);
   };
 
-  // Each provider is read independently; one failure never blocks the other.
-  const refresh = async (providers: readonly ProviderId[], openIfMissing: boolean): Promise<void> => {
-    view.refreshing = true;
-    view.chromePrompt = null;
-    render();
-
-    const results = await Promise.all(
-      providers.map(async (provider) => ({ provider, result: await readUsage(provider, openIfMissing) })),
-    );
-
-    const readAt = new Date();
-    const needChrome: ProviderId[] = [];
-    let requirement: ChromeRequirement = "tab_missing";
-    for (const { provider, result } of results) {
-      if (result.kind === "needs_chrome") {
-        needChrome.push(provider);
-        requirement = result.requirement;
-        continue;
-      }
-      view.states[provider] = applyReadResult(view.states[provider], result, readAt);
-    }
-
+  const finishRefresh = (): void => {
+    pending.clear();
+    window.clearTimeout(refreshTimeout);
     view.refreshing = false;
-    view.chromePrompt = needChrome.length > 0 ? { providers: needChrome, requirement } : null;
-    render();
   };
 
-  const cancelChrome = (): void => {
-    for (const provider of view.chromePrompt?.providers ?? []) {
-      view.states[provider] = {
-        ...view.states[provider],
-        error: `Pominięto: brak otwartej karty ${PROVIDER_INFO[provider].domain} w Chrome.`,
-      };
-    }
-    view.chromePrompt = null;
+  const refresh = async (): Promise<void> => {
+    PROVIDERS.forEach((provider) => pending.add(provider));
+    view.refreshing = true;
     render();
+    refreshTimeout = window.setTimeout(() => {
+      finishRefresh();
+      render();
+    }, REFRESH_TIMEOUT_MS);
+
+    try {
+      await invoke("refresh_usage");
+    } catch {
+      finishRefresh();
+      render();
+    }
   };
 
   const actions: PanelActions = {
-    onRefresh: () => void refresh(PROVIDERS, false),
-    onConfirmChrome: () => void refresh(view.chromePrompt?.providers ?? [], true),
-    onCancelChrome: cancelChrome,
+    onRefresh: () => void refresh(),
+    onLogin: (provider) => void invoke("open_login", { provider }),
     onHelp: () => void invoke("open_help"),
     onAbout: () => void invoke("open_about"),
     onQuit: () => void invoke("quit"),
   };
+
+  // Readings arrive from hidden windows: every minute and after each refresh.
+  // The first refresh waits for the listener, so the startup reading is not lost.
+  void listen<UsageReport>(REPORT_EVENT, ({ payload }) => {
+    const result = parseReaderOutput(payload.output);
+    view.states[payload.provider] = applyReadResult(view.states[payload.provider], result, new Date());
+    pending.delete(payload.provider);
+    if (view.refreshing && pending.size === 0) {
+      finishRefresh();
+    }
+    render();
+  }).then(() => invoke("refresh_usage"));
 
   render();
 

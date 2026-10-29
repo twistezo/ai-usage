@@ -1,16 +1,20 @@
 # AI Usage
 
-macOS menu bar app showing Codex Plus and Claude Pro usage: 5-hour and weekly limits with reset times.
+macOS menu bar app showing Codex Plus and Claude Pro usage: 5-hour and weekly limits with reset times, refreshed every minute in the background.
 
-Limits are read inside logged-in Google Chrome tabs via Apple Events. Cookies and tokens never leave Chrome; the app receives only percentages and reset times.
+The app keeps its own Claude and ChatGPT sessions. Hidden windows load each site and fetch the usage endpoints with that session; only percentages and reset times reach the panel.
 
 ```mermaid
 flowchart LR
-  panel[Panel TS] -- invoke read_usage --> rust[Rust]
-  rust -- osascript --> chrome[Chrome tab]
-  chrome -- fetch with session --> api[claude.ai / chatgpt.com]
-  chrome -- limits JSON --> panel
+  timer[Rust timer, 60 s] -- eval script --> reader[Hidden window per site]
+  reader -- fetch with session --> api[claude.ai / chatgpt.com]
+  reader -- result in document title --> rust[Rust]
+  rust -- usage-report event --> panel[Panel TS]
+  panel -- 401/403 --> login[Login window]
+  login -- closed: reload reader --> reader
 ```
+
+The result travels through the document title so the remote pages never get access to the app's IPC.
 
 ## Requirements
 
@@ -33,23 +37,21 @@ Install the built app:
 cp -R "src-tauri/target/release/bundle/macos/AI Usage.app" /Applications/
 ```
 
-## One-time setup
+## First run
 
-1. Log in to `claude.ai` and `chatgpt.com` in Chrome.
-2. Chrome: **View → Developer → Allow JavaScript from Apple Events**.
-3. First refresh: allow AI Usage to control Google Chrome. Revoke or restore in **System Settings → Privacy & Security → Automation**.
+Click the menu bar icon, then “Log in to Claude” / “Log in to ChatGPT”. Log in with the e-mail code, not the link: the link opens in the default browser. Close the login window; readings start within seconds.
 
-In-app instructions: `help.html`.
+Sessions live in the app's WebKit store (`~/Library/WebKit/ai-usage` in dev, `~/Library/WebKit/com.twistezo.ai-usage` for the bundle).
 
 ## Where things live
 
 | Path | Role |
 |---|---|
-| `src-tauri/scripts/read-usage.applescript` | Finds or opens the tab, runs the page script, polls the result |
-| `src-tauri/scripts/claude.js`, `codex.js` | Endpoints per provider; output format parsed in `src/reader.ts` |
-| `src-tauri/scripts/runner.js`, `poll.js` | Shared page wrapper; the `window.__aiUsageReader` key must match in both |
-| `src-tauri/src/usage_reader.rs` | Runs `osascript` with the bundled scripts only |
-| `src/reader.ts` | Parses script output, maps errors to messages |
-| `src/panel.ts`, `src/main.ts` | Panel rendering and refresh flow |
+| `src-tauri/src/session_reader.rs` | Hidden reader windows, login windows, 60 s timer, hourly page reload |
+| `src-tauri/scripts/claude.js`, `codex.js` | Endpoints per provider |
+| `src-tauri/scripts/report.js` | Shared wrapper; its title prefix must match `TITLE_PREFIX` in `session_reader.rs` |
+| `src/reader.ts` | Parses reports, maps errors to messages and login prompts |
+| `src/panel.ts`, `src/main.ts` | Panel rendering and refresh flow; `REPORT_EVENT` and `AUTO_REFRESH_NOTE` must match `session_reader.rs` |
+| `src/styles.css` | Dracula Pro (dark) and Alucard (light) palettes, brand colors `--brand-codex`, `--brand-claude` |
 
 Endpoints are undocumented. When a provider changes its response, update its page script and the parser tests in `src/reader.test.ts`.

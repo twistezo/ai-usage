@@ -24,9 +24,22 @@ const readUsage = async () => {
   const pick = (value) =>
     value ? { utilization: value.utilization, resets_at: value.resets_at } : null;
 
+  // Paid usage beyond the plan; amounts are in minor units, e.g. cents.
+  const extra = usage.data.extra_usage;
+
   return {
     status: 'ok',
     five_hour: pick(usage.data.five_hour),
     seven_day: pick(usage.data.seven_day),
+    extra: extra
+      ? {
+          kind: 'spend',
+          enabled: extra.is_enabled,
+          used_minor: extra.used_credits,
+          limit_minor: extra.monthly_limit,
+          decimal_places: extra.decimal_places,
+          currency: extra.currency,
+        }
+      : null,
   };
 };

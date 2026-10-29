@@ -1,31 +1,26 @@
-import { formatPercent, formatReadAt, formatReset } from "./format";
-import type { ChromeRequirement } from "./reader";
+import { formatFullDate, formatMoney, formatPercent, formatReset } from "./format";
 import {
   PROVIDER_INFO,
   PROVIDERS,
   isStale,
-  usageLevel,
+  type ExtraUsage,
   type ProviderId,
   type ProviderState,
   type UsageStates,
   type UsageWindow,
 } from "./usage";
 
-export type ChromePrompt = {
-  providers: ProviderId[];
-  requirement: ChromeRequirement;
-};
+// Must match REFRESH_INTERVAL in src-tauri/src/session_reader.rs.
+const AUTO_REFRESH_NOTE = "auto: 1 min";
 
 export type PanelView = {
   states: UsageStates;
   refreshing: boolean;
-  chromePrompt: ChromePrompt | null;
 };
 
 export type PanelActions = {
   onRefresh: () => void;
-  onConfirmChrome: () => void;
-  onCancelChrome: () => void;
+  onLogin: (provider: ProviderId) => void;
   onHelp: () => void;
   onAbout: () => void;
   onQuit: () => void;
@@ -55,32 +50,85 @@ const createButton = (className: string, label: string, onClick: () => void): HT
   return button;
 };
 
-const renderWindow = (label: string, usageWindow: UsageWindow, now: Date): HTMLElement => {
+type Meter = {
+  value: string;
+  label: string;
+  // Omitted when there is nothing to measure against, e.g. a credit balance.
+  percent?: number;
+  description?: string;
+  descriptionTitle?: string;
+};
+
+const renderMeter = (meter: Meter): HTMLElement => {
   const row = createElement("div", "usage-window");
 
+  // Value and label on the left, description on the right, bar below.
   const heading = createElement("div", "usage-heading");
-  heading.append(
-    createElement("span", "usage-label", label),
-    createElement("span", "usage-percent", formatPercent(usageWindow.utilization)),
+  const summary = createElement("div", "usage-summary");
+  summary.append(
+    createElement("span", "usage-percent", meter.value),
+    createElement("span", "usage-label", meter.label),
   );
+  heading.append(summary);
 
-  const bar = createElement("div", "bar");
-  const fill = createElement("div", `bar-fill level-${usageLevel(usageWindow.utilization)}`);
-  fill.style.width = `${Math.min(Math.max(usageWindow.utilization, 0), 100)}%`;
-  bar.append(fill);
-
-  const reset = createElement("div", "usage-reset", formatReset(usageWindow.resetsAt, now));
-  if (usageWindow.resetsAt) {
-    reset.title = usageWindow.resetsAt.toLocaleString("pl-PL");
+  if (meter.description) {
+    const description = createElement("span", "usage-reset", meter.description);
+    if (meter.descriptionTitle) {
+      description.title = meter.descriptionTitle;
+    }
+    heading.append(description);
   }
+  row.append(heading);
 
-  row.append(heading, bar, reset);
+  if (meter.percent !== undefined) {
+    const bar = createElement("div", "bar");
+    const fill = createElement("div", "bar-fill");
+    fill.style.width = `${Math.min(Math.max(meter.percent, 0), 100)}%`;
+    bar.append(fill);
+    row.append(bar);
+  }
 
   return row;
 };
 
-const renderProvider = (provider: ProviderId, state: ProviderState, now: Date): HTMLElement => {
-  const section = createElement("section", "provider");
+const windowMeter = (label: string, usageWindow: UsageWindow, now: Date): Meter => ({
+  value: formatPercent(usageWindow.utilization),
+  label,
+  percent: usageWindow.utilization,
+  description: formatReset(usageWindow.resetsAt, now),
+  descriptionTitle: usageWindow.resetsAt ? formatFullDate(usageWindow.resetsAt) : undefined,
+});
+
+const extraMeter = (extra: ExtraUsage): Meter => {
+  if (extra.kind === "credits") {
+    const value = extra.unlimited
+      ? "Unlimited"
+      : extra.balance > 0
+        ? `${extra.balance} left`
+        : "Off";
+
+    return { value, label: "Extra" };
+  }
+
+  if (!extra.enabled) {
+    return { value: "Off", label: "Extra" };
+  }
+
+  return {
+    value: `${formatMoney(extra.used, extra.currency)} / ${formatMoney(extra.limit, extra.currency)}`,
+    label: "Extra",
+    percent: extra.limit > 0 ? (extra.used / extra.limit) * 100 : 0,
+  };
+};
+
+const renderProvider = (
+  provider: ProviderId,
+  state: ProviderState,
+  now: Date,
+  actions: PanelActions,
+): HTMLElement => {
+  // The class sets the provider's brand color.
+  const section = createElement("section", `provider provider-${provider}`);
   const info = PROVIDER_INFO[provider];
 
   const header = createElement("div", "provider-header");
@@ -91,44 +139,31 @@ const renderProvider = (provider: ProviderId, state: ProviderState, now: Date): 
   section.append(header);
 
   if (state.usage) {
-    const stale = isStale(state.usage, now) || state.error !== null;
-    const readAt = createElement(
-      "div",
-      stale ? "read-at stale" : "read-at",
-      `Odczyt: ${formatReadAt(state.usage.readAt, now)}${stale ? " (nieaktualne)" : ""}`,
-    );
     section.append(
-      renderWindow("5 godzin", state.usage.fiveHour, now),
-      renderWindow("Tydzień", state.usage.sevenDay, now),
-      readAt,
+      renderMeter(windowMeter("5h", state.usage.fiveHour, now)),
+      renderMeter(windowMeter("1w", state.usage.sevenDay, now)),
     );
+    if (state.usage.extra) {
+      section.append(renderMeter(extraMeter(state.usage.extra)));
+    }
+    // A failed refresh already explains itself in the error below.
+    if (isStale(state.usage, now) && !state.error) {
+      section.append(createElement("div", "stale", "Outdated: no successful update for over 5 minutes"));
+    }
   } else if (!state.error) {
-    section.append(createElement("div", "empty", "Brak odczytu. Kliknij „Odśwież”."));
+    section.append(createElement("div", "empty", "Waiting for the first reading…"));
   }
 
   if (state.error) {
     section.append(createElement("div", "error", state.error));
   }
+  if (state.needsLogin) {
+    section.append(
+      createButton("secondary login", `Log in to ${info.account}`, () => actions.onLogin(provider)),
+    );
+  }
 
   return section;
-};
-
-const renderChromePrompt = (prompt: ChromePrompt, actions: PanelActions): HTMLElement => {
-  const domains = prompt.providers.map((provider) => PROVIDER_INFO[provider].domain).join(", ");
-  const [title, body] =
-    prompt.requirement === "chrome_not_running"
-      ? ["Otworzyć Google Chrome?", `Aby odczytać limity, aplikacja uruchomi Chrome i otworzy: ${domains}.`]
-      : ["Otworzyć brakujące karty?", `Aby odczytać limity, aplikacja otworzy w Chrome: ${domains}.`];
-
-  const box = createElement("div", "prompt");
-  const buttons = createElement("div", "prompt-buttons");
-  buttons.append(
-    createButton("secondary", "Anuluj", actions.onCancelChrome),
-    createButton("primary", "Otwórz Chrome", actions.onConfirmChrome),
-  );
-  box.append(createElement("div", "prompt-title", title), createElement("p", "prompt-body", body), buttons);
-
-  return box;
 };
 
 export const renderPanel = (
@@ -139,25 +174,26 @@ export const renderPanel = (
 ): void => {
   const refresh = createButton(
     "refresh primary",
-    view.refreshing ? "Odświeżanie…" : "Odśwież",
+    view.refreshing ? "Refreshing…" : "Refresh",
     actions.onRefresh,
   );
-  refresh.disabled = view.refreshing || view.chromePrompt !== null;
+  refresh.disabled = view.refreshing;
+
+  const header = createElement("header", "panel-header");
+  const refreshGroup = createElement("div", "refresh-group");
+  refreshGroup.append(refresh, createElement("div", "refresh-note", AUTO_REFRESH_NOTE));
+  header.append(createElement("span", "panel-title", "ai-usage"), refreshGroup);
 
   const footer = createElement("footer", "panel-footer");
-  const secondary = createElement("div", "menu-row");
-  secondary.append(
-    createButton("menu-item", "O aplikacji…", actions.onAbout),
-    createButton("menu-item", "Zakończ", actions.onQuit),
+  footer.append(
+    createButton("menu-item", "Help & setup…", actions.onHelp),
+    createButton("menu-item", "About…", actions.onAbout),
+    createButton("menu-item", "Quit", actions.onQuit),
   );
-  if (view.chromePrompt) {
-    footer.append(renderChromePrompt(view.chromePrompt, actions));
-  }
-  footer.append(refresh, createButton("menu-item", "Pomoc i konfiguracja…", actions.onHelp), secondary);
 
   root.replaceChildren(
-    createElement("header", "panel-title", "AI Usage"),
-    ...PROVIDERS.map((provider) => renderProvider(provider, view.states[provider], now)),
+    header,
+    ...PROVIDERS.map((provider) => renderProvider(provider, view.states[provider], now, actions)),
     footer,
   );
 };

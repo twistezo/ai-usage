@@ -4,6 +4,6 @@ const version = document.querySelector<HTMLElement>("#version");
 
 if (version) {
   void getVersion().then((value) => {
-    version.textContent = `Wersja ${value}`;
+    version.textContent = `Version ${value}`;
   });
 }

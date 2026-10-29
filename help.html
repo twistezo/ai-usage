@@ -1,42 +1,38 @@
 <!doctype html>
-<html lang="pl">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="/src/styles.css" />
-    <title>Pomoc i konfiguracja</title>
+    <title>Help &amp; setup</title>
+    <script type="module" src="/src/info-page.ts"></script>
   </head>
 
   <body>
     <main class="info-page">
-      <h1>Pomoc i konfiguracja</h1>
+      <h1>Help &amp; setup</h1>
 
       <p>
-        AI Usage odczytuje limity przez zalogowany Google Chrome. Odczyt wykonuje
-        sam Chrome w kartach Claude i ChatGPT; cookies i tokeny nie opuszczają
-        przeglądarki. Do aplikacji trafiają tylko procenty zużycia i terminy resetów.
+        ai-usage keeps its own saved Claude and ChatGPT sessions and reads your
+        5h and weekly usage in the background every minute. The sessions never
+        leave the app; the panel only receives usage percentages and reset times.
       </p>
 
-      <h2>Jednorazowa konfiguracja</h2>
+      <h2>First run</h2>
       <ol>
-        <li>Zaloguj się w Chrome do <code>claude.ai</code> i <code>chatgpt.com</code>.</li>
+        <li>Click the menu bar icon, then “Log in to Claude” or “Log in to ChatGPT”.</li>
         <li>
-          W Chrome wybierz <strong>Widok → Deweloper → Zezwól na kod JavaScript z Apple Events</strong>.
+          Log in with the <strong>code from the e-mail</strong>. The e-mail link would
+          open in your browser instead of the app.
         </li>
-        <li>
-          Przy pierwszym odświeżeniu macOS zapyta, czy AI Usage może sterować
-          aplikacją Google Chrome. Wybierz <strong>OK</strong>.
-        </li>
+        <li>Close the login window. Usage appears within a few seconds.</li>
       </ol>
 
-      <h2>Gdy odświeżenie się nie udaje</h2>
+      <h2>Troubleshooting</h2>
       <ul>
-        <li>
-          Odmówiłeś zgody macOS: <strong>Ustawienia systemowe → Prywatność i ochrona →
-          Automatyzacja → AI Usage</strong>, włącz Google Chrome.
-        </li>
-        <li>Sesja wygasła: zaloguj się ponownie w Chrome i kliknij „Odśwież”.</li>
-        <li>Chrome pokazuje weryfikację: przejdź ją w karcie, potem odśwież.</li>
+        <li>“Session expired or needs verification”: click “Log in to…” and log in again.</li>
+        <li>“Outdated”: no update has succeeded for a few minutes; check your connection.</li>
+        <li>“Refresh” reads usage right away instead of waiting for the next minute.</li>
       </ul>
     </main>
   </body>

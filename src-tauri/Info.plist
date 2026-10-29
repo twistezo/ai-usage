@@ -4,7 +4,5 @@
 <dict>
 	<key>LSUIElement</key>
 	<true/>
-	<key>NSAppleEventsUsageDescription</key>
-	<string>AI Usage odczytuje limity Codex i Claude w zalogowanych kartach Google Chrome.</string>
 </dict>
 </plist>

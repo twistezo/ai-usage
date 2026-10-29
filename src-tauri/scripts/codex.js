@@ -40,5 +40,20 @@ const readUsage = async () => {
     };
   };
 
-  return { status: 'ok', five_hour: pick(18000), seven_day: pick(604800) };
+  // Purchased credits beyond the plan; only the remaining balance is reported.
+  const credits = usage.data.credits;
+
+  return {
+    status: 'ok',
+    five_hour: pick(18000),
+    seven_day: pick(604800),
+    extra: credits
+      ? {
+          kind: 'credits',
+          has_credits: credits.has_credits,
+          unlimited: credits.unlimited,
+          balance: credits.balance,
+        }
+      : null,
+  };
 };

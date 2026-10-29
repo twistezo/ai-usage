@@ -2,7 +2,7 @@
 name = "ai-usage"
 version = "0.1.0"
 description = "Menu bar panel with Codex and Claude usage limits"
-authors = ["Łukasz Kółko"]
+authors = ["twistezo"]
 edition = "2024"
 
 [lib]

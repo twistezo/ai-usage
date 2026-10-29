@@ -1,8 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-
-import { applyReadResult, parseReaderOutput, type ReadResult } from "./reader";
+import {
+  applyReadResult,
+  LOGIN_REQUIRED_MESSAGE,
+  parseReaderOutput,
+  type ReadResult,
+} from "./reader";
 import type { ProviderState } from "./usage";
 
 const output = (data: unknown): string => JSON.stringify(data);
@@ -15,13 +18,13 @@ describe("parseReaderOutput", () => {
         five_hour: { utilization: 41, resets_at: "2026-10-29T12:39:59.642987+00:00" },
         seven_day: { utilization: 21, resets_at: "2026-11-01T13:59:59.643011+00:00" },
       }),
-      "claude",
     );
 
     expect(result).toEqual({
       kind: "ok",
       fiveHour: { utilization: 41, resetsAt: new Date("2026-10-29T12:39:59.642Z") },
       sevenDay: { utilization: 21, resetsAt: new Date("2026-11-01T13:59:59.643Z") },
+      extra: null,
     });
   });
 
@@ -32,13 +35,75 @@ describe("parseReaderOutput", () => {
         five_hour: null,
         seven_day: { utilization: 3, resets_at: null },
       }),
-      "codex",
     );
 
     expect(result).toEqual({
       kind: "ok",
       fiveHour: { utilization: 0, resetsAt: null },
       sevenDay: { utilization: 3, resetsAt: null },
+      extra: null,
+    });
+  });
+
+  it("reads Claude extra usage spent this month in currency units", () => {
+    const result = parseReaderOutput(
+      output({
+        status: "ok",
+        five_hour: null,
+        seven_day: null,
+        extra: {
+          kind: "spend",
+          enabled: true,
+          used_minor: 118,
+          limit_minor: 150,
+          decimal_places: 2,
+          currency: "USD",
+        },
+      }),
+    );
+
+    expect(result.kind === "ok" && result.extra).toEqual({
+      kind: "spend",
+      enabled: true,
+      used: 1.18,
+      limit: 1.5,
+      currency: "USD",
+    });
+  });
+
+  it("reads the Codex credit balance sent as text", () => {
+    const result = parseReaderOutput(
+      output({
+        status: "ok",
+        five_hour: null,
+        seven_day: null,
+        extra: { kind: "credits", has_credits: true, unlimited: false, balance: "12.5" },
+      }),
+    );
+
+    expect(result.kind === "ok" && result.extra).toEqual({
+      kind: "credits",
+      hasCredits: true,
+      unlimited: false,
+      balance: 12.5,
+    });
+  });
+
+  it("hides malformed extra usage but keeps the limits", () => {
+    const result = parseReaderOutput(
+      output({
+        status: "ok",
+        five_hour: { utilization: 10, resets_at: null },
+        seven_day: null,
+        extra: { kind: "spend", enabled: true, used_minor: "a lot" },
+      }),
+    );
+
+    expect(result).toEqual({
+      kind: "ok",
+      fiveHour: { utilization: 10, resetsAt: null },
+      sevenDay: { utilization: 0, resetsAt: null },
+      extra: null,
     });
   });
 
@@ -49,74 +114,61 @@ describe("parseReaderOutput", () => {
         five_hour: { utilization: 10, resets_at: "soon" },
         seven_day: null,
       }),
-      "codex",
     );
 
-    expect(result).toEqual({ kind: "error", message: "Nieoczekiwany format odpowiedzi serwera." });
+    expect(result).toEqual({ kind: "error", message: "Unexpected server response format." });
   });
 
   it("rejects a reading without a numeric utilization", () => {
     const result = parseReaderOutput(
       output({ status: "ok", five_hour: { utilization: "41%" }, seven_day: null }),
-      "claude",
     );
 
     expect(result.kind).toBe("error");
   });
 
-  it("asks for Chrome when it is closed or the tab is missing", () => {
-    expect(parseReaderOutput(output({ status: "chrome_not_running" }), "codex")).toEqual({
-      kind: "needs_chrome",
-      requirement: "chrome_not_running",
-    });
-    expect(parseReaderOutput(output({ status: "tab_missing" }), "claude")).toEqual({
-      kind: "needs_chrome",
-      requirement: "tab_missing",
-    });
+  it("asks for login when the session expired", () => {
+    expect(
+      parseReaderOutput(output({ status: "http_error", step: "session", http_status: 401 })),
+    ).toEqual({ kind: "login_required" });
   });
 
-  it("tells the user to log in again on an expired session", () => {
-    const result = parseReaderOutput(
-      output({ status: "http_error", step: "usage", http_status: 401 }),
-      "codex",
-    );
+  it("asks for login when a verification check blocks the request", () => {
+    expect(
+      parseReaderOutput(output({ status: "http_error", step: "usage", http_status: 403 })),
+    ).toEqual({ kind: "login_required" });
+  });
 
-    expect(result).toEqual({
+  it("reports rate limiting without asking for login", () => {
+    expect(parseReaderOutput(output({ status: "http_error", http_status: 429 }))).toEqual({
       kind: "error",
-      message: "Sesja wygasła lub wymaga weryfikacji. Otwórz chatgpt.com w Chrome i zaloguj się.",
+      message: "The server is rate limiting requests. Try again later.",
     });
   });
 
-  it("points to setup when Chrome blocks JavaScript from Apple Events", () => {
-    const result = parseReaderOutput(output({ status: "apple_event_error", code: 12 }), "claude");
-
-    expect(result).toEqual({
+  it("reports other server errors with their status", () => {
+    expect(parseReaderOutput(output({ status: "http_error", http_status: 502 }))).toEqual({
       kind: "error",
-      message: "Chrome nie zezwala na kod JavaScript z Apple Events. Zobacz „Pomoc i konfiguracja”.",
+      message: "The server returned HTTP 502.",
     });
   });
 
-  it("points to setup when macOS denies automation", () => {
-    const result = parseReaderOutput(output({ status: "apple_event_error", code: -1743 }), "claude");
-
-    expect(result.kind === "error" && result.message).toContain("Brak zgody macOS");
-  });
-
-  it("reports an unknown Apple Events error with its code", () => {
-    const result = parseReaderOutput(output({ status: "apple_event_error", code: -1708 }), "codex");
-
-    expect(result).toEqual({ kind: "error", message: "Błąd Apple Events (-1708)." });
+  it("reports a network failure", () => {
+    expect(parseReaderOutput(output({ status: "network_error" }))).toEqual({
+      kind: "error",
+      message: "No connection or the request timed out.",
+    });
   });
 
   it("reports output that is not JSON", () => {
-    expect(parseReaderOutput("execution error", "codex")).toEqual({
+    expect(parseReaderOutput("{broken")).toEqual({
       kind: "error",
-      message: "Nieoczekiwana odpowiedź skryptu odczytu.",
+      message: "Unexpected reader output.",
     });
   });
 
   it("reports an unknown status", () => {
-    expect(parseReaderOutput(output({ status: "something_new" }), "codex").kind).toBe("error");
+    expect(parseReaderOutput(output({ status: "something_new" })).kind).toBe("error");
   });
 });
 
@@ -126,37 +178,45 @@ describe("applyReadResult", () => {
     usage: {
       fiveHour: { utilization: 40, resetsAt: null },
       sevenDay: { utilization: 20, resetsAt: null },
+      extra: null,
       readAt: new Date("2026-10-29T11:00:00Z"),
     },
     error: null,
+    needsLogin: false,
   };
 
-  it("replaces the reading and clears the error after a successful refresh", () => {
+  it("replaces the reading and clears errors after a successful refresh", () => {
     const result: ReadResult = {
       kind: "ok",
       fiveHour: { utilization: 55, resetsAt: null },
       sevenDay: { utilization: 25, resetsAt: null },
+      extra: { kind: "credits", hasCredits: false, unlimited: false, balance: 0 },
     };
 
-    expect(applyReadResult({ ...previous, error: "old" }, result, readAt)).toEqual({
-      usage: { fiveHour: result.fiveHour, sevenDay: result.sevenDay, readAt },
+    expect(
+      applyReadResult({ ...previous, error: LOGIN_REQUIRED_MESSAGE, needsLogin: true }, result, readAt),
+    ).toEqual({
+      usage: { fiveHour: result.fiveHour, sevenDay: result.sevenDay, extra: result.extra, readAt },
       error: null,
+      needsLogin: false,
     });
   });
 
-  it("keeps the last good reading when a refresh fails", () => {
-    const next = applyReadResult(previous, { kind: "error", message: "Brak połączenia." }, readAt);
-
-    expect(next).toEqual({ usage: previous.usage, error: "Brak połączenia." });
+  it("keeps the last good reading and offers login when the session expired", () => {
+    expect(applyReadResult(previous, { kind: "login_required" }, readAt)).toEqual({
+      usage: previous.usage,
+      error: LOGIN_REQUIRED_MESSAGE,
+      needsLogin: true,
+    });
   });
 
-  it("leaves the state alone while waiting for the user to allow Chrome", () => {
+  it("keeps the last good reading on a temporary failure without offering login", () => {
     const next = applyReadResult(
-      previous,
-      { kind: "needs_chrome", requirement: "tab_missing" },
+      { ...previous, needsLogin: true },
+      { kind: "error", message: "No connection." },
       readAt,
     );
 
-    expect(next).toBe(previous);
+    expect(next).toEqual({ usage: previous.usage, error: "No connection.", needsLogin: false });
   });
 });

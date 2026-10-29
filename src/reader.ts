@@ -1,33 +1,17 @@
-import { invoke } from "@tauri-apps/api/core";
-
-import { PROVIDER_INFO, type ProviderId, type ProviderState, type UsageWindow } from "./usage";
-
-const CHROME_REQUIREMENTS = ["chrome_not_running", "tab_missing"] as const;
-export type ChromeRequirement = (typeof CHROME_REQUIREMENTS)[number];
+import type { ExtraUsage, ProviderState, UsageWindow } from "./usage";
 
 export type ReadResult =
-  | { kind: "ok"; fiveHour: UsageWindow; sevenDay: UsageWindow }
-  | { kind: "needs_chrome"; requirement: ChromeRequirement }
+  | { kind: "ok"; fiveHour: UsageWindow; sevenDay: UsageWindow; extra: ExtraUsage | null }
+  | { kind: "login_required" }
   | { kind: "error"; message: string };
 
-const SETUP_HINT = "Zobacz „Pomoc i konfiguracja”.";
-
-const APPLE_EVENT_ERRORS: Record<number, string> = {
-  [-1743]: `Brak zgody macOS na sterowanie Chrome. ${SETUP_HINT}`,
-  [-600]: "Chrome nie odpowiada. Uruchom go ponownie.",
-  12: `Chrome nie zezwala na kod JavaScript z Apple Events. ${SETUP_HINT}`,
-};
-
 const STATUS_ERRORS: Record<string, string> = {
-  network_error: "Brak połączenia lub przekroczony czas odpowiedzi.",
-  unexpected_response: "Nieoczekiwany format odpowiedzi serwera.",
-  timeout: "Przekroczono czas oczekiwania na odczyt.",
-  load_timeout: "Karta nie załadowała się na czas.",
-  busy: "Poprzedni odczyt nadal trwa.",
-  page_reloaded: "Karta została przeładowana w trakcie odczytu.",
+  network_error: "No connection or the request timed out.",
+  unexpected_response: "Unexpected server response format.",
 };
 
-const UNEXPECTED_OUTPUT = "Nieoczekiwana odpowiedź skryptu odczytu.";
+const UNEXPECTED_OUTPUT = "Unexpected reader output.";
+export const LOGIN_REQUIRED_MESSAGE = "Session expired or needs verification.";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -39,9 +23,6 @@ const parseJson = (text: string): unknown => {
     return null;
   }
 };
-
-const isChromeRequirement = (value: unknown): value is ChromeRequirement =>
-  CHROME_REQUIREMENTS.some((requirement) => requirement === value);
 
 // A missing window means it has not started yet; anything malformed returns null.
 const parseWindow = (value: unknown): UsageWindow | null => {
@@ -72,18 +53,57 @@ const parseWindow = (value: unknown): UsageWindow | null => {
   return { utilization, resetsAt };
 };
 
-const httpErrorMessage = (provider: ProviderId, httpStatus: unknown): string => {
-  if (httpStatus === 401 || httpStatus === 403) {
-    return `Sesja wygasła lub wymaga weryfikacji. Otwórz ${PROVIDER_INFO[provider].domain} w Chrome i zaloguj się.`;
-  }
-  if (httpStatus === 429) {
-    return "Serwer ogranicza liczbę zapytań. Spróbuj później.";
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value);
+
+// Extra usage is optional: a missing or malformed value hides it without failing the reading.
+const parseExtra = (value: unknown): ExtraUsage | null => {
+  if (!isRecord(value)) {
+    return null;
   }
 
-  return `Serwer zwrócił błąd HTTP ${String(httpStatus)}.`;
+  if (value.kind === "spend") {
+    const { enabled, used_minor, limit_minor, decimal_places, currency } = value;
+    if (
+      typeof enabled !== "boolean" ||
+      !isFiniteNumber(used_minor) ||
+      !isFiniteNumber(limit_minor) ||
+      !isFiniteNumber(decimal_places) ||
+      typeof currency !== "string"
+    ) {
+      return null;
+    }
+    const scale = 10 ** decimal_places;
+
+    return { kind: "spend", enabled, used: used_minor / scale, limit: limit_minor / scale, currency };
+  }
+
+  if (value.kind === "credits") {
+    const { has_credits, unlimited } = value;
+    const balance = Number(value.balance ?? 0);
+    if (typeof has_credits !== "boolean" || typeof unlimited !== "boolean" || !Number.isFinite(balance)) {
+      return null;
+    }
+
+    return { kind: "credits", hasCredits: has_credits, unlimited, balance };
+  }
+
+  return null;
 };
 
-export const parseReaderOutput = (output: string, provider: ProviderId): ReadResult => {
+const parseHttpError = (httpStatus: unknown): ReadResult => {
+  // 403 also covers a Cloudflare check, which the login window resolves.
+  if (httpStatus === 401 || httpStatus === 403) {
+    return { kind: "login_required" };
+  }
+  if (httpStatus === 429) {
+    return { kind: "error", message: "The server is rate limiting requests. Try again later." };
+  }
+
+  return { kind: "error", message: `The server returned HTTP ${String(httpStatus)}.` };
+};
+
+export const parseReaderOutput = (output: string): ReadResult => {
   const data = parseJson(output);
   if (!isRecord(data) || typeof data.status !== "string") {
     return { kind: "error", message: UNEXPECTED_OUTPUT };
@@ -96,50 +116,31 @@ export const parseReaderOutput = (output: string, provider: ProviderId): ReadRes
       return { kind: "error", message: STATUS_ERRORS.unexpected_response };
     }
 
-    return { kind: "ok", fiveHour, sevenDay };
+    return { kind: "ok", fiveHour, sevenDay, extra: parseExtra(data.extra) };
   }
 
-  if (isChromeRequirement(data.status)) {
-    return { kind: "needs_chrome", requirement: data.status };
-  }
   if (data.status === "http_error") {
-    return { kind: "error", message: httpErrorMessage(provider, data.http_status) };
-  }
-  if (data.status === "apple_event_error" && typeof data.code === "number") {
-    return {
-      kind: "error",
-      message: APPLE_EVENT_ERRORS[data.code] ?? `Błąd Apple Events (${data.code}).`,
-    };
+    return parseHttpError(data.http_status);
   }
 
   return { kind: "error", message: STATUS_ERRORS[data.status] ?? UNEXPECTED_OUTPUT };
 };
 
-// Chrome requirements are resolved by asking the user, so they leave the state unchanged.
 export const applyReadResult = (
   state: ProviderState,
   result: ReadResult,
   readAt: Date,
 ): ProviderState => {
   if (result.kind === "ok") {
-    return { usage: { fiveHour: result.fiveHour, sevenDay: result.sevenDay, readAt }, error: null };
+    return {
+      usage: { fiveHour: result.fiveHour, sevenDay: result.sevenDay, extra: result.extra, readAt },
+      error: null,
+      needsLogin: false,
+    };
   }
-  if (result.kind === "error") {
-    return { usage: state.usage, error: result.message };
+  if (result.kind === "login_required") {
+    return { usage: state.usage, error: LOGIN_REQUIRED_MESSAGE, needsLogin: true };
   }
 
-  return state;
-};
-
-export const readUsage = async (
-  provider: ProviderId,
-  openIfMissing: boolean,
-): Promise<ReadResult> => {
-  try {
-    const output = await invoke<string>("read_usage", { provider, openIfMissing });
-
-    return parseReaderOutput(output, provider);
-  } catch (error) {
-    return { kind: "error", message: `Nie udało się uruchomić odczytu: ${String(error)}` };
-  }
+  return { usage: state.usage, error: result.message, needsLogin: false };
 };

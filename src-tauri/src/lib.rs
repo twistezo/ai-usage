@@ -1,4 +1,4 @@
-mod usage_reader;
+mod session_reader;
 
 use std::{
     sync::Mutex,
@@ -81,6 +81,7 @@ fn open_info_window(app: &AppHandle, label: &str, title: &str, page: &str) -> ta
 
     let window = WebviewWindowBuilder::new(app, label, WebviewUrl::App(page.into()))
         .title(title)
+        // Width must match INFO_WINDOW_WIDTH in src/info-page.ts; the page fits the height.
         .inner_size(440.0, 420.0)
         .resizable(false)
         .minimizable(false)
@@ -92,22 +93,30 @@ fn open_info_window(app: &AppHandle, label: &str, title: &str, page: &str) -> ta
 
 #[tauri::command]
 fn open_help(app: AppHandle) -> tauri::Result<()> {
-    open_info_window(&app, "help", "Pomoc i konfiguracja", "help.html")
+    open_info_window(&app, "help", "Help & setup", "help.html")
 }
 
 #[tauri::command]
 fn open_about(app: AppHandle) -> tauri::Result<()> {
-    open_info_window(&app, "about", "O aplikacji", "about.html")
+    open_info_window(&app, "about", "About", "about.html")
 }
 
 #[tauri::command]
-async fn read_usage(
-    provider: usage_reader::Provider,
-    open_if_missing: bool,
-) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || usage_reader::read(provider, open_if_missing))
-        .await
-        .map_err(|error| error.to_string())?
+fn refresh_usage(app: AppHandle) -> tauri::Result<()> {
+    for provider in session_reader::PROVIDERS {
+        session_reader::refresh(&app, provider)?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn open_login(app: AppHandle, provider: session_reader::Provider) -> tauri::Result<()> {
+    if let Some(panel) = app.get_webview_window(PANEL_LABEL) {
+        let _ = panel.hide();
+    }
+
+    session_reader::open_login(&app, provider)
 }
 
 #[tauri::command]
@@ -126,7 +135,7 @@ pub fn run() {
             TrayIconBuilder::with_id("main")
                 .icon(tauri::include_image!("icons/tray-template.png"))
                 .icon_as_template(true)
-                .tooltip("AI Usage")
+                .tooltip("ai-usage")
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
                         rect,
@@ -140,9 +149,19 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // The panel triggers the first refresh, which creates the hidden reader windows.
+            session_reader::start_timer(app.handle().clone());
+
             Ok(())
         })
         .on_window_event(|window, event| {
+            if let Some(provider) = session_reader::Provider::from_login_label(window.label()) {
+                if let WindowEvent::Destroyed = event {
+                    let _ = session_reader::reload(window.app_handle(), provider);
+                }
+
+                return;
+            }
             if window.label() != PANEL_LABEL {
                 return;
             }
@@ -155,7 +174,11 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            read_usage, open_help, open_about, quit
+            refresh_usage,
+            open_login,
+            open_help,
+            open_about,
+            quit
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
