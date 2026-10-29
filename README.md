@@ -17,7 +17,7 @@ A macOS menu bar app that shows your Codex and Claude subscription usage (5-hour
 
 The app signs in to `chatgpt.com` and `claude.ai` in its own hidden windows and reads their usage endpoints from inside those pages. Session tokens never leave the page.
 
-## Download
+## Installation
 
 Prebuilt app on the [Releases](https://github.com/twistezo/ai-usage/releases) page, for Apple Silicon Macs only. Unzip it and move `AI Usage.app` to `/Applications`.
 
@@ -26,6 +26,10 @@ The app is not notarized, so macOS blocks the first launch. Open it once, then g
 ```bash
 xattr -dr com.apple.quarantine "/Applications/AI Usage.app"
 ```
+
+### First run
+
+Click the robot icon, choose “Log in to Claude” or “Log in to ChatGPT”, sign in with the **code from the e-mail** (the link would open in your browser instead) and close the window.
 
 ## Requirements
 
@@ -44,6 +48,8 @@ npm install
 npm run tauri dev
 ```
 
+The development build keeps its own logins, separate from the installed app.
+
 ### Tests
 
 ```bash
@@ -58,9 +64,3 @@ npm run tauri build
 rm -rf "/Applications/AI Usage.app"
 cp -R "src-tauri/target/release/bundle/macos/AI Usage.app" /Applications/
 ```
-
-### First run
-
-Click the robot icon, choose “Log in to Claude” or “Log in to ChatGPT”, sign in with the **code from the e-mail** (the link would open in your browser instead) and close the window.
-
-The development build and the installed app keep separate logins.
