@@ -40,21 +40,23 @@ const readUsage = async () => {
     };
   };
 
+  const fiveHour = pick(18000);
+  const sevenDay = pick(604800);
+  // Neither known window means the format changed; better an error than a false 0%.
+  if (!fiveHour && !sevenDay) {
+    return { status: 'unexpected_response' };
+  }
+
   // Purchased credits beyond the plan; only the remaining balance is reported.
   const credits = usage.data.credits;
 
   return {
     status: 'ok',
     plan: usage.data.plan_type,
-    five_hour: pick(18000),
-    seven_day: pick(604800),
+    five_hour: fiveHour,
+    seven_day: sevenDay,
     extra: credits
-      ? {
-          kind: 'credits',
-          has_credits: credits.has_credits,
-          unlimited: credits.unlimited,
-          balance: credits.balance,
-        }
+      ? { kind: 'credits', unlimited: credits.unlimited, balance: credits.balance }
       : null,
   };
 };

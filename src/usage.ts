@@ -15,9 +15,17 @@ export type UsageWindow = {
 
 // Paid usage beyond the plan. Claude reports money spent this month,
 // Codex only the balance of purchased credits.
+// `decimals` is how many digits the currency uses after the point.
 export type ExtraUsage =
-  | { kind: "spend"; enabled: boolean; used: number; limit: number; currency: string }
-  | { kind: "credits"; hasCredits: boolean; unlimited: boolean; balance: number };
+  | {
+      kind: "spend";
+      enabled: boolean;
+      used: number;
+      limit: number;
+      currency: string;
+      decimals: number;
+    }
+  | { kind: "credits"; unlimited: boolean; balance: number };
 
 // `plan` is the subscription as the service names it, e.g. "plus" or "team".
 export type ProviderUsage = {
@@ -43,7 +51,8 @@ export const createEmptyStates = (): UsageStates => ({
 });
 
 // Background refresh runs every minute, so a few missed readings mean trouble.
-const STALE_AFTER_MS = 5 * 60_000;
+export const STALE_AFTER_MINUTES = 5;
+const STALE_AFTER_MS = STALE_AFTER_MINUTES * 60_000;
 
 export const isStale = (usage: ProviderUsage, now: Date): boolean =>
   now.getTime() - usage.readAt.getTime() > STALE_AFTER_MS;

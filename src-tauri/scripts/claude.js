@@ -13,6 +13,9 @@ const readUsage = async () => {
     organizations.data.find(
       (item) => Array.isArray(item.capabilities) && item.capabilities.includes('chat'),
     ) ?? organizations.data[0];
+  if (typeof organization.uuid !== 'string' || organization.uuid === '') {
+    return { status: 'unexpected_response' };
+  }
 
   const usage = await fetchJson(
     '/api/organizations/' + encodeURIComponent(organization.uuid) + '/usage',

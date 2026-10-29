@@ -11,13 +11,15 @@ export type ReadResult =
   | { kind: "login_required" }
   | { kind: "error"; message: string };
 
-const STATUS_ERRORS: Record<string, string> = {
-  network_error: "No connection or the request timed out.",
-  unexpected_response: "Unexpected server response format.",
-};
+const UNEXPECTED_RESPONSE = "Unexpected server response format.";
+// A Map, so statuses like "toString" never hit Object's built-in members.
+const STATUS_ERRORS = new Map<string, string>([
+  ["network_error", "No connection or the request timed out."],
+  ["unexpected_response", UNEXPECTED_RESPONSE],
+]);
 
 const UNEXPECTED_OUTPUT = "Unexpected reader output.";
-export const LOGIN_REQUIRED_MESSAGE = "Session expired or needs verification.";
+const LOGIN_REQUIRED_MESSAGE = "Session expired or needs verification.";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -62,6 +64,12 @@ const parseWindow = (value: unknown): UsageWindow | null => {
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
+// Currencies use 0 to 4 decimal places; anything else is not a real currency format.
+const MAX_DECIMAL_PLACES = 4;
+
+const isDecimalPlaces = (value: unknown): value is number =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= MAX_DECIMAL_PLACES;
+
 // Extra usage is optional: a missing or malformed value hides it without failing the reading.
 const parseExtra = (value: unknown): ExtraUsage | null => {
   if (!isRecord(value)) {
@@ -74,30 +82,42 @@ const parseExtra = (value: unknown): ExtraUsage | null => {
       typeof enabled !== "boolean" ||
       !isFiniteNumber(used_minor) ||
       !isFiniteNumber(limit_minor) ||
-      !isFiniteNumber(decimal_places) ||
+      !isDecimalPlaces(decimal_places) ||
       typeof currency !== "string"
     ) {
       return null;
     }
     const scale = 10 ** decimal_places;
 
-    return { kind: "spend", enabled, used: used_minor / scale, limit: limit_minor / scale, currency };
+    return {
+      kind: "spend",
+      enabled,
+      used: used_minor / scale,
+      limit: limit_minor / scale,
+      currency,
+      decimals: decimal_places,
+    };
   }
 
   if (value.kind === "credits") {
-    const { has_credits, unlimited } = value;
+    const { unlimited } = value;
+    // Codex sends the balance as text, e.g. "0".
     const balance = Number(value.balance ?? 0);
-    if (typeof has_credits !== "boolean" || typeof unlimited !== "boolean" || !Number.isFinite(balance)) {
+    if (typeof unlimited !== "boolean" || !Number.isFinite(balance)) {
       return null;
     }
 
-    return { kind: "credits", hasCredits: has_credits, unlimited, balance };
+    return { kind: "credits", unlimited, balance };
   }
 
   return null;
 };
 
 const parseHttpError = (httpStatus: unknown): ReadResult => {
+  // The report comes from a remote page; only a real status code is worth showing.
+  if (typeof httpStatus !== "number" || !Number.isInteger(httpStatus)) {
+    return { kind: "error", message: UNEXPECTED_OUTPUT };
+  }
   // 403 also covers a Cloudflare check, which the login window resolves.
   if (httpStatus === 401 || httpStatus === 403) {
     return { kind: "login_required" };
@@ -119,7 +139,7 @@ export const parseReaderOutput = (output: string): ReadResult => {
     const fiveHour = parseWindow(data.five_hour);
     const sevenDay = parseWindow(data.seven_day);
     if (!fiveHour || !sevenDay) {
-      return { kind: "error", message: STATUS_ERRORS.unexpected_response };
+      return { kind: "error", message: UNEXPECTED_RESPONSE };
     }
 
     const plan = typeof data.plan === "string" && data.plan !== "" ? data.plan : null;
@@ -131,7 +151,7 @@ export const parseReaderOutput = (output: string): ReadResult => {
     return parseHttpError(data.http_status);
   }
 
-  return { kind: "error", message: STATUS_ERRORS[data.status] ?? UNEXPECTED_OUTPUT };
+  return { kind: "error", message: STATUS_ERRORS.get(data.status) ?? UNEXPECTED_OUTPUT };
 };
 
 export const applyReadResult = (

@@ -3,6 +3,7 @@ import { ICONS, type IconName } from "./icons";
 import {
   PROVIDER_INFO,
   PROVIDERS,
+  STALE_AFTER_MINUTES,
   isStale,
   type ExtraUsage,
   type ProviderId,
@@ -140,7 +141,7 @@ const extraMeter = (extra: ExtraUsage): Meter => {
   }
 
   return {
-    value: formatSpend(extra.used, extra.limit, extra.currency),
+    value: formatSpend(extra.used, extra.limit, extra.currency, extra.decimals),
     label: "Extra",
     alignEnd: true,
   };
@@ -174,7 +175,13 @@ const renderProvider = (
     }
     // A failed refresh already explains itself in the error below.
     if (isStale(state.usage, now) && !state.error) {
-      section.append(createElement("div", "stale", "Outdated: no successful update for over 5 minutes"));
+      section.append(
+        createElement(
+          "div",
+          "stale",
+          `Outdated: no successful update for over ${STALE_AFTER_MINUTES} minutes`,
+        ),
+      );
     }
   } else if (!state.error) {
     section.append(createElement("div", "empty", "Waiting for the first reading…"));

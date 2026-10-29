@@ -8,8 +8,12 @@ const fullDateTimeFormat = new Intl.DateTimeFormat("en-GB", {
 });
 
 // "1.18 / 1.50 EUR": the currency code from the API, shown once.
-export const formatSpend = (used: number, limit: number, currency: string): string =>
-  `${used.toFixed(2)} / ${limit.toFixed(2)} ${currency}`;
+export const formatSpend = (
+  used: number,
+  limit: number,
+  currency: string,
+  decimals: number,
+): string => `${used.toFixed(decimals)} / ${limit.toFixed(decimals)} ${currency}`;
 
 // "team" becomes "Team", "pro_lite" becomes "Pro lite".
 export const formatPlan = (plan: string): string => {

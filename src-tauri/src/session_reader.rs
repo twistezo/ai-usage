@@ -19,6 +19,7 @@ const RELOAD_EVERY_TICKS: u32 = 60;
 const REPORT_EVENT: &str = "usage-report";
 // Views that show readings: the menu bar panel and the standalone window.
 const VIEW_LABELS: [&str; 2] = ["panel", "window"];
+const APP_NAME: &str = "ai-usage";
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -79,7 +80,11 @@ struct Report {
 }
 
 fn reader_script(provider: Provider) -> String {
-    format!("(() => {{\n{}\n{}\n}})()", provider.site().script, REPORT_SCRIPT)
+    format!(
+        "(() => {{\n{}\n{}\n}})()",
+        provider.site().script,
+        REPORT_SCRIPT
+    )
 }
 
 fn parse_url(url: &str) -> tauri::Result<Url> {
@@ -144,12 +149,21 @@ pub fn open_login(app: &AppHandle, provider: Provider) -> tauri::Result<()> {
     }
 
     let site = provider.site();
+    let login_url = parse_url(site.login_url)?;
+    // The window has no address bar, so its title names the site actually shown.
+    let name = site.name;
+    let title = move |host: &str| format!("{APP_NAME} · Log in to {name} · {host}");
     let window = WebviewWindowBuilder::new(
         app,
         provider.login_label(),
-        WebviewUrl::External(parse_url(site.login_url)?),
+        WebviewUrl::External(login_url.clone()),
     )
-    .title(format!("Log in to {}", site.name))
+    .title(title(login_url.host_str().unwrap_or_default()))
+    .on_page_load(move |window, payload| {
+        if payload.event() == PageLoadEvent::Finished {
+            let _ = window.set_title(&title(payload.url().host_str().unwrap_or_default()));
+        }
+    })
     .inner_size(900.0, 760.0)
     .center()
     .build()?;
@@ -172,4 +186,101 @@ pub fn start_timer(app: AppHandle) {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MAIN_TS: &str = include_str!("../../src/main.ts");
+    const CAPABILITIES: &str = include_str!("../capabilities/default.json");
+
+    #[test]
+    fn panel_requests_name_providers_in_lowercase() {
+        let provider: Provider = serde_json::from_str("\"claude\"").unwrap();
+
+        assert_eq!(provider.site().id, "claude");
+        assert!(serde_json::from_str::<Provider>("\"Claude\"").is_err());
+        assert!(serde_json::from_str::<Provider>("\"gemini\"").is_err());
+    }
+
+    #[test]
+    fn closing_a_login_window_is_traced_back_to_its_provider() {
+        for provider in PROVIDERS {
+            let found = Provider::from_login_label(&provider.login_label()).map(|p| p.site().id);
+
+            assert_eq!(found, Some(provider.site().id));
+        }
+    }
+
+    #[test]
+    fn other_windows_are_not_mistaken_for_login_windows() {
+        for label in [
+            "panel",
+            "window",
+            "help",
+            "reader-codex",
+            "login-gemini",
+            "login-",
+        ] {
+            assert!(Provider::from_login_label(label).is_none(), "{label}");
+        }
+    }
+
+    #[test]
+    fn every_site_is_https_and_logs_in_on_the_host_it_reads_from() {
+        for provider in PROVIDERS {
+            let site = provider.site();
+            let home = Url::parse(site.home_url).unwrap();
+            let login = Url::parse(site.login_url).unwrap();
+
+            assert_eq!(home.scheme(), "https");
+            assert_eq!(login.host_str(), home.host_str());
+        }
+    }
+
+    #[test]
+    fn reader_script_runs_the_providers_reader_and_the_shared_report() {
+        let script = reader_script(Provider::Codex);
+
+        assert!(script.starts_with("(() => {"));
+        assert!(script.trim_end().ends_with("})()"));
+        assert!(script.contains("/backend-api/wham/usage"));
+        assert!(!script.contains("/api/organizations"));
+        assert!(script.contains(REPORT_SCRIPT));
+    }
+
+    // Constants that must agree across Rust, the page scripts and the panel.
+    #[test]
+    fn report_prefix_matches_the_page_script() {
+        assert!(REPORT_SCRIPT.contains(&format!("const prefix = '{TITLE_PREFIX}';")));
+    }
+
+    #[test]
+    fn report_event_and_window_label_match_the_panel() {
+        assert!(MAIN_TS.contains(&format!("const REPORT_EVENT = \"{REPORT_EVENT}\";")));
+        assert!(MAIN_TS.contains(&format!("const WINDOW_LABEL = \"{}\";", VIEW_LABELS[1])));
+    }
+
+    // Remote pages run in reader and login windows; none of them may reach the app's commands.
+    #[test]
+    fn remote_windows_get_no_command_permissions() {
+        let capabilities: serde_json::Value = serde_json::from_str(CAPABILITIES).unwrap();
+        let windows: Vec<&str> = capabilities["windows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|window| window.as_str().unwrap())
+            .collect();
+
+        for label in VIEW_LABELS {
+            assert!(windows.contains(&label), "{label} needs permissions");
+        }
+        for provider in PROVIDERS {
+            assert!(!windows.contains(&provider.reader_label().as_str()));
+            assert!(!windows.contains(&provider.login_label().as_str()));
+        }
+        assert!(windows.iter().all(|window| !window.contains('*')));
+        assert!(capabilities.get("remote").is_none());
+    }
 }

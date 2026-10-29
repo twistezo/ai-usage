@@ -4,12 +4,22 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { renderPanel, type PanelActions, type PanelView, type ViewMode } from "./panel";
 import { applyReadResult, parseReaderOutput } from "./reader";
-import { createEmptyStates, PROVIDERS, type ProviderId } from "./usage";
+import {
+  IDLE,
+  readFlag,
+  receiveReport,
+  saveFlag,
+  startRefresh,
+  type RefreshState,
+} from "./refresh";
+import { createEmptyStates, type ProviderId } from "./usage";
 import { fitWindowToContent } from "./window-size";
 
 const PANEL_WIDTH = 340;
 // Manual refresh stops showing progress if a hidden page never reports back.
 const REFRESH_TIMEOUT_MS = 20_000;
+// Countdowns and the "Outdated" note move on even when no reading arrives.
+const RERENDER_INTERVAL_MS = 60_000;
 // Must match REPORT_EVENT in src-tauri/src/session_reader.rs.
 const REPORT_EVENT = "usage-report";
 
@@ -22,23 +32,6 @@ type UsageReport = {
   output: string;
 };
 
-// A per-viewer convenience, so a storage failure only loses the preference.
-const readAlwaysOnTop = (): boolean => {
-  try {
-    return localStorage.getItem(ALWAYS_ON_TOP_KEY) === "true";
-  } catch {
-    return false;
-  }
-};
-
-const saveAlwaysOnTop = (value: boolean): void => {
-  try {
-    localStorage.setItem(ALWAYS_ON_TOP_KEY, String(value));
-  } catch {
-    // The preference is optional.
-  }
-};
-
 const currentWindow = getCurrentWindow();
 const mode: ViewMode = currentWindow.label === WINDOW_LABEL ? "window" : "panel";
 // Lets the stylesheet draw the panel and the window as a rounded card.
@@ -48,11 +41,11 @@ const view: PanelView = {
   mode,
   states: createEmptyStates(),
   refreshing: false,
-  alwaysOnTop: mode === "window" && readAlwaysOnTop(),
+  alwaysOnTop: mode === "window" && readFlag(localStorage, ALWAYS_ON_TOP_KEY),
 };
 
 if (app) {
-  const pending = new Set<ProviderId>();
+  let refreshState = IDLE;
   let refreshTimeout: number | undefined;
 
   const render = (): void => {
@@ -60,15 +53,18 @@ if (app) {
     void fitWindowToContent(app, PANEL_WIDTH);
   };
 
-  const finishRefresh = (): void => {
-    pending.clear();
-    window.clearTimeout(refreshTimeout);
-    view.refreshing = false;
+  const setRefreshState = (next: RefreshState): void => {
+    refreshState = next;
+    view.refreshing = next.refreshing;
+    if (!next.refreshing) {
+      window.clearTimeout(refreshTimeout);
+    }
   };
 
+  const finishRefresh = (): void => setRefreshState(IDLE);
+
   const refresh = async (): Promise<void> => {
-    PROVIDERS.forEach((provider) => pending.add(provider));
-    view.refreshing = true;
+    setRefreshState(startRefresh());
     render();
     refreshTimeout = window.setTimeout(() => {
       finishRefresh();
@@ -85,7 +81,7 @@ if (app) {
 
   const toggleAlwaysOnTop = async (): Promise<void> => {
     view.alwaysOnTop = !view.alwaysOnTop;
-    saveAlwaysOnTop(view.alwaysOnTop);
+    saveFlag(localStorage, ALWAYS_ON_TOP_KEY, view.alwaysOnTop);
     render();
     await currentWindow.setAlwaysOnTop(view.alwaysOnTop);
   };
@@ -105,10 +101,7 @@ if (app) {
   void listen<UsageReport>(REPORT_EVENT, ({ payload }) => {
     const result = parseReaderOutput(payload.output);
     view.states[payload.provider] = applyReadResult(view.states[payload.provider], result, new Date());
-    pending.delete(payload.provider);
-    if (view.refreshing && pending.size === 0) {
-      finishRefresh();
-    }
+    setRefreshState(receiveReport(refreshState, payload.provider));
     render();
   }).then(() => invoke("refresh_usage"));
 
@@ -119,6 +112,7 @@ if (app) {
 
   // Relative reset times go stale while the panel is hidden.
   window.addEventListener("focus", render);
+  window.setInterval(render, RERENDER_INTERVAL_MS);
   if (mode === "panel") {
     window.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
