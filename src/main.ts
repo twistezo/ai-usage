@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
-import { renderPanel, type PanelActions, type PanelView } from "./panel";
+import { renderPanel, type PanelActions, type PanelView, type ViewMode } from "./panel";
 import { applyReadResult, parseReaderOutput } from "./reader";
 import { createEmptyStates, PROVIDERS, type ProviderId } from "./usage";
 import { fitWindowToContent } from "./window-size";
@@ -13,15 +13,40 @@ const REFRESH_TIMEOUT_MS = 20_000;
 // Must match REPORT_EVENT in src-tauri/src/session_reader.rs.
 const REPORT_EVENT = "usage-report";
 
+// Must match WINDOW_LABEL in src-tauri/src/lib.rs.
+const WINDOW_LABEL = "window";
+const ALWAYS_ON_TOP_KEY = "always-on-top";
+
 type UsageReport = {
   provider: ProviderId;
   output: string;
 };
 
+// A per-viewer convenience, so a storage failure only loses the preference.
+const readAlwaysOnTop = (): boolean => {
+  try {
+    return localStorage.getItem(ALWAYS_ON_TOP_KEY) === "true";
+  } catch {
+    return false;
+  }
+};
+
+const saveAlwaysOnTop = (value: boolean): void => {
+  try {
+    localStorage.setItem(ALWAYS_ON_TOP_KEY, String(value));
+  } catch {
+    // The preference is optional.
+  }
+};
+
+const currentWindow = getCurrentWindow();
+const mode: ViewMode = currentWindow.label === WINDOW_LABEL ? "window" : "panel";
 const app = document.querySelector<HTMLElement>("#app");
 const view: PanelView = {
+  mode,
   states: createEmptyStates(),
   refreshing: false,
+  alwaysOnTop: mode === "window" && readAlwaysOnTop(),
 };
 
 if (app) {
@@ -56,8 +81,17 @@ if (app) {
     }
   };
 
+  const toggleAlwaysOnTop = async (): Promise<void> => {
+    view.alwaysOnTop = !view.alwaysOnTop;
+    saveAlwaysOnTop(view.alwaysOnTop);
+    render();
+    await currentWindow.setAlwaysOnTop(view.alwaysOnTop);
+  };
+
   const actions: PanelActions = {
     onRefresh: () => void refresh(),
+    onOpenWindow: () => void invoke("open_window"),
+    onToggleAlwaysOnTop: () => void toggleAlwaysOnTop(),
     onLogin: (provider) => void invoke("open_login", { provider }),
     onHelp: () => void invoke("open_help"),
     onAbout: () => void invoke("open_about"),
@@ -77,12 +111,17 @@ if (app) {
   }).then(() => invoke("refresh_usage"));
 
   render();
+  if (view.alwaysOnTop) {
+    void currentWindow.setAlwaysOnTop(true);
+  }
 
   // Relative reset times go stale while the panel is hidden.
   window.addEventListener("focus", render);
-  window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      void getCurrentWindow().hide();
-    }
-  });
+  if (mode === "panel") {
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        void currentWindow.hide();
+      }
+    });
+  }
 }

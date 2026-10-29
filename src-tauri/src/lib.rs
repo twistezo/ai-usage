@@ -12,6 +12,8 @@ use tauri::{
 };
 
 const PANEL_LABEL: &str = "panel";
+// Must match WINDOW_LABEL in src/main.ts.
+const WINDOW_LABEL: &str = "window";
 // Logical pixels between the menu bar and the panel.
 const PANEL_GAP: f64 = 6.0;
 // Clicking the tray icon blurs the panel first; without this guard the click would reopen it.
@@ -119,6 +121,31 @@ fn open_login(app: AppHandle, provider: session_reader::Provider) -> tauri::Resu
     session_reader::open_login(&app, provider)
 }
 
+// The standalone window shows the panel view in a regular macOS window.
+// While it is open the app joins the Dock and the app switcher, so it cannot get lost.
+#[tauri::command]
+fn open_window(app: AppHandle) -> tauri::Result<()> {
+    if let Some(panel) = app.get_webview_window(PANEL_LABEL) {
+        let _ = panel.hide();
+    }
+    app.set_activation_policy(ActivationPolicy::Regular)?;
+
+    if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
+        window.show()?;
+
+        return window.set_focus();
+    }
+
+    // The page fits the height to its content; the position is restored by the window-state plugin.
+    let window = WebviewWindowBuilder::new(&app, WINDOW_LABEL, WebviewUrl::App("index.html".into()))
+        .title("")
+        .inner_size(340.0, 480.0)
+        .resizable(false)
+        .build()?;
+
+    window.set_focus()
+}
+
 #[tauri::command]
 fn quit(app: AppHandle) {
     app.exit(0);
@@ -127,6 +154,12 @@ fn quit(app: AppHandle) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(tauri_plugin_window_state::StateFlags::POSITION)
+                .with_filter(|label| label == WINDOW_LABEL)
+                .build(),
+        )
         .manage(PanelState::default())
         .setup(|app| {
             // Menu bar only: no Dock icon, no app switcher entry.
@@ -162,6 +195,15 @@ pub fn run() {
 
                 return;
             }
+            if window.label() == WINDOW_LABEL {
+                if let WindowEvent::Destroyed = event {
+                    let _ = window
+                        .app_handle()
+                        .set_activation_policy(ActivationPolicy::Accessory);
+                }
+
+                return;
+            }
             if window.label() != PANEL_LABEL {
                 return;
             }
@@ -175,6 +217,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             refresh_usage,
+            open_window,
             open_login,
             open_help,
             open_about,

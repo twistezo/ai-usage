@@ -1,6 +1,6 @@
 # AI Usage
 
-macOS menu bar app showing Codex Plus and Claude Pro usage: 5-hour and weekly limits with reset times, refreshed every minute in the background.
+macOS menu bar app showing Codex and Claude subscription usage: 5-hour and weekly limits with reset times, refreshed every minute in the background.
 
 The app keeps its own Claude and ChatGPT sessions. Hidden windows load each site and fetch the usage endpoints with that session; only percentages and reset times reach the panel.
 
@@ -51,7 +51,7 @@ Sessions live in the app's WebKit store (`~/Library/WebKit/ai-usage` in dev, `~/
 | `src-tauri/scripts/claude.js`, `codex.js` | Endpoints per provider |
 | `src-tauri/scripts/report.js` | Shared wrapper; its title prefix must match `TITLE_PREFIX` in `session_reader.rs` |
 | `src/reader.ts` | Parses reports, maps errors to messages and login prompts |
-| `src/panel.ts`, `src/main.ts` | Panel rendering and refresh flow; `REPORT_EVENT` and `AUTO_REFRESH_NOTE` must match `session_reader.rs` |
+| `src/panel.ts`, `src/main.ts` | Panel rendering and refresh flow; `REPORT_EVENT` must match `session_reader.rs` |
 | `src/styles.css` | Dracula Pro (dark) and Alucard (light) palettes, brand colors `--brand-codex`, `--brand-claude` |
 
 Endpoints are undocumented. When a provider changes its response, update its page script and the parser tests in `src/reader.test.ts`.

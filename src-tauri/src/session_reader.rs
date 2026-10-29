@@ -12,13 +12,13 @@ const CLAUDE_SCRIPT: &str = include_str!("../scripts/claude.js");
 
 // Must match `prefix` in scripts/report.js.
 const TITLE_PREFIX: &str = "__AIUSAGE__";
-// Change AUTO_REFRESH_NOTE in src/panel.ts together with this.
 const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 // Single-page apps grow when left open for days; a periodic reload keeps hidden pages small.
 const RELOAD_EVERY_TICKS: u32 = 60;
 // Must match the event name listened to in src/main.ts.
 const REPORT_EVENT: &str = "usage-report";
-const PANEL_LABEL: &str = "panel";
+// Views that show readings: the menu bar panel and the standalone window.
+const VIEW_LABELS: [&str; 2] = ["panel", "window"];
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -108,7 +108,10 @@ fn create_reader(app: &AppHandle, provider: Provider) -> tauri::Result<()> {
                 provider,
                 output: output.to_string(),
             };
-            let _ = report_app.emit_to(PANEL_LABEL, REPORT_EVENT, report);
+            // Only the app's own views; the remote reader pages never receive events.
+            for label in VIEW_LABELS {
+                let _ = report_app.emit_to(label, REPORT_EVENT, report.clone());
+            }
         }
     })
     .build()?;

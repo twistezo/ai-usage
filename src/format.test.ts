@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatMoney, formatPercent, formatReset } from "./format";
+import { formatPercent, formatPlan, formatReset, formatSpend } from "./format";
 
 const now = new Date(2026, 9, 29, 12, 0);
 const minutesLater = (minutes: number): Date => new Date(now.getTime() + minutes * 60_000);
@@ -39,12 +39,23 @@ describe("formatPercent", () => {
   });
 });
 
-describe("formatMoney", () => {
-  it("shows dollars with the dollar sign", () => {
-    expect(formatMoney(1.18, "USD")).toBe("$1.18");
+describe("formatSpend", () => {
+  it("shows spent and limit with the currency code once", () => {
+    expect(formatSpend(1.18, 2.34, "EUR")).toBe("1.18 / 2.34 EUR");
   });
 
-  it("falls back to the code for an unknown currency", () => {
-    expect(formatMoney(2, "??")).toBe("2.00 ??");
+  it("keeps two decimals for round amounts", () => {
+    expect(formatSpend(0, 5, "USD")).toBe("0.00 / 5.00 USD");
+  });
+});
+
+describe("formatPlan", () => {
+  it("capitalizes the plan name from the API", () => {
+    expect(formatPlan("team")).toBe("Team");
+    expect(formatPlan("plus")).toBe("Plus");
+  });
+
+  it("turns underscores into spaces", () => {
+    expect(formatPlan("pro_lite")).toBe("Pro lite");
   });
 });

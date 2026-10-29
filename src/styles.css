@@ -8,7 +8,6 @@
   --track: #e8e4d0;
   --hover: rgba(31, 31, 31, 0.06);
   --accent: #644ac9;
-  --on-accent: #fffbeb;
   --warning: #a34d14;
   --danger: #cb3a2a;
 
@@ -36,7 +35,6 @@
     --track: #454158;
     --hover: rgba(248, 248, 242, 0.08);
     --accent: #9580ff;
-    --on-accent: #22212c;
     --warning: #ffca80;
     --danger: #ff9580;
 
@@ -49,21 +47,20 @@ body {
   overflow: hidden;
 }
 
+/* Equal spacing on every side; the last section adds none of its own. */
 #app {
-  padding: 14px 16px 10px;
+  padding: 16px;
+}
+
+#app > :last-child {
+  padding-bottom: 0;
 }
 
 .panel-header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.panel-title {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-weight: 600;
-  color: var(--accent);
+  justify-content: flex-end;
+  gap: 6px;
+  margin-bottom: 12px;
 }
 
 .provider {
@@ -115,6 +112,10 @@ body {
   color: var(--muted);
 }
 
+.align-end .usage-heading {
+  justify-content: flex-end;
+}
+
 .usage-summary {
   display: flex;
   gap: 5px;
@@ -142,8 +143,7 @@ body {
 }
 
 .usage-reset,
-.empty,
-.refresh-note {
+.empty {
   font-size: 11px;
   color: var(--muted);
 }
@@ -168,49 +168,60 @@ body {
   border-top: 1px solid var(--separator);
 }
 
-.primary,
 .secondary {
   padding: 6px 12px;
   border: none;
   border-radius: 6px;
   font: inherit;
   font-weight: 500;
-}
-
-.primary {
-  color: var(--on-accent);
-  background: var(--accent);
-}
-
-.secondary {
   color: var(--text);
   background: var(--track);
 }
 
-.primary:active,
 .secondary:active {
   filter: brightness(0.9);
 }
 
-.primary:disabled {
-  opacity: 0.5;
+.icon-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--separator);
+  border-radius: 5px;
+  color: var(--muted);
+  background: none;
 }
 
-.refresh {
-  padding: 2px 10px;
-  border-radius: 5px;
+.icon-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.icon-button-label {
+  font: inherit;
   font-size: 11px;
 }
 
-.refresh-group {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
+.icon-button:hover,
+.icon-button.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--hover);
 }
 
-.refresh-note {
-  font-size: 10px;
+.icon-button:disabled {
+  opacity: 0.6;
+}
+
+.icon-button.spinning svg {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .login {
@@ -236,7 +247,7 @@ body {
 }
 
 .info-page {
-  padding: 20px 24px;
+  padding: 24px;
   user-select: text;
 }
 

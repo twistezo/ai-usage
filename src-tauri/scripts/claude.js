@@ -24,11 +24,21 @@ const readUsage = async () => {
   const pick = (value) =>
     value ? { utilization: value.utilization, resets_at: value.resets_at } : null;
 
+  // e.g. "claude_team" becomes "team"; the panel capitalizes it.
+  const subscription = organization.analytics_subscription_plan;
+  const plan =
+    typeof subscription === 'string'
+      ? subscription.replace('claude_', '')
+      : typeof organization.raven_type === 'string'
+        ? organization.raven_type
+        : null;
+
   // Paid usage beyond the plan; amounts are in minor units, e.g. cents.
   const extra = usage.data.extra_usage;
 
   return {
     status: 'ok',
+    plan,
     five_hour: pick(usage.data.five_hour),
     seven_day: pick(usage.data.seven_day),
     extra: extra

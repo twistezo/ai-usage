@@ -45,6 +45,7 @@ const readUsage = async () => {
 
   return {
     status: 'ok',
+    plan: usage.data.plan_type,
     five_hour: pick(18000),
     seven_day: pick(604800),
     extra: credits

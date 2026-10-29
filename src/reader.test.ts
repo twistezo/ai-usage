@@ -15,6 +15,7 @@ describe("parseReaderOutput", () => {
     const result = parseReaderOutput(
       output({
         status: "ok",
+        plan: "team",
         five_hour: { utilization: 41, resets_at: "2026-10-29T12:39:59.642987+00:00" },
         seven_day: { utilization: 21, resets_at: "2026-11-01T13:59:59.643011+00:00" },
       }),
@@ -22,6 +23,7 @@ describe("parseReaderOutput", () => {
 
     expect(result).toEqual({
       kind: "ok",
+      plan: "team",
       fiveHour: { utilization: 41, resetsAt: new Date("2026-10-29T12:39:59.642Z") },
       sevenDay: { utilization: 21, resetsAt: new Date("2026-11-01T13:59:59.643Z") },
       extra: null,
@@ -39,6 +41,7 @@ describe("parseReaderOutput", () => {
 
     expect(result).toEqual({
       kind: "ok",
+      plan: null,
       fiveHour: { utilization: 0, resetsAt: null },
       sevenDay: { utilization: 3, resetsAt: null },
       extra: null,
@@ -101,10 +104,22 @@ describe("parseReaderOutput", () => {
 
     expect(result).toEqual({
       kind: "ok",
+      plan: null,
       fiveHour: { utilization: 10, resetsAt: null },
       sevenDay: { utilization: 0, resetsAt: null },
       extra: null,
     });
+  });
+
+  it("treats an empty or non-text plan as unknown", () => {
+    const planOf = (plan: unknown): string | null | undefined => {
+      const result = parseReaderOutput(output({ status: "ok", plan, five_hour: null, seven_day: null }));
+
+      return result.kind === "ok" ? result.plan : undefined;
+    };
+
+    expect(planOf("")).toBeNull();
+    expect(planOf(42)).toBeNull();
   });
 
   it("rejects a reading with an unparseable reset time", () => {
@@ -176,6 +191,7 @@ describe("applyReadResult", () => {
   const readAt = new Date("2026-10-29T12:00:00Z");
   const previous: ProviderState = {
     usage: {
+      plan: "plus",
       fiveHour: { utilization: 40, resetsAt: null },
       sevenDay: { utilization: 20, resetsAt: null },
       extra: null,
@@ -188,6 +204,7 @@ describe("applyReadResult", () => {
   it("replaces the reading and clears errors after a successful refresh", () => {
     const result: ReadResult = {
       kind: "ok",
+      plan: "team",
       fiveHour: { utilization: 55, resetsAt: null },
       sevenDay: { utilization: 25, resetsAt: null },
       extra: { kind: "credits", hasCredits: false, unlimited: false, balance: 0 },
@@ -196,7 +213,13 @@ describe("applyReadResult", () => {
     expect(
       applyReadResult({ ...previous, error: LOGIN_REQUIRED_MESSAGE, needsLogin: true }, result, readAt),
     ).toEqual({
-      usage: { fiveHour: result.fiveHour, sevenDay: result.sevenDay, extra: result.extra, readAt },
+      usage: {
+        plan: "team",
+        fiveHour: result.fiveHour,
+        sevenDay: result.sevenDay,
+        extra: result.extra,
+        readAt,
+      },
       error: null,
       needsLogin: false,
     });

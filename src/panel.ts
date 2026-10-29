@@ -1,4 +1,5 @@
-import { formatFullDate, formatMoney, formatPercent, formatReset } from "./format";
+import { formatFullDate, formatPercent, formatPlan, formatReset, formatSpend } from "./format";
+import { ICONS, type IconName } from "./icons";
 import {
   PROVIDER_INFO,
   PROVIDERS,
@@ -10,16 +11,21 @@ import {
   type UsageWindow,
 } from "./usage";
 
-// Must match REFRESH_INTERVAL in src-tauri/src/session_reader.rs.
-const AUTO_REFRESH_NOTE = "auto: 1 min";
+// The same view renders in the menu bar panel and in the standalone window.
+const VIEW_MODES = ["panel", "window"] as const;
+export type ViewMode = (typeof VIEW_MODES)[number];
 
 export type PanelView = {
+  mode: ViewMode;
   states: UsageStates;
   refreshing: boolean;
+  alwaysOnTop: boolean;
 };
 
 export type PanelActions = {
   onRefresh: () => void;
+  onOpenWindow: () => void;
+  onToggleAlwaysOnTop: () => void;
   onLogin: (provider: ProviderId) => void;
   onHelp: () => void;
   onAbout: () => void;
@@ -57,10 +63,29 @@ type Meter = {
   percent?: number;
   description?: string;
   descriptionTitle?: string;
+  // Right-aligns the value, setting extra usage apart from the plan limits.
+  alignEnd?: boolean;
+};
+
+const createIconButton = (
+  icon: IconName,
+  label: string,
+  hint: string,
+  onClick: () => void,
+): HTMLButtonElement => {
+  const button = createElement("button", "icon-button");
+  button.type = "button";
+  button.title = hint;
+  // Trusted markup bundled from @tabler/icons.
+  button.innerHTML = ICONS[icon];
+  button.append(createElement("span", "icon-button-label", label));
+  button.addEventListener("click", onClick);
+
+  return button;
 };
 
 const renderMeter = (meter: Meter): HTMLElement => {
-  const row = createElement("div", "usage-window");
+  const row = createElement("div", meter.alignEnd ? "usage-window align-end" : "usage-window");
 
   // Value and label on the left, description on the right, bar below.
   const heading = createElement("div", "usage-heading");
@@ -107,17 +132,17 @@ const extraMeter = (extra: ExtraUsage): Meter => {
         ? `${extra.balance} left`
         : "Off";
 
-    return { value, label: "Extra" };
+    return { value, label: "Extra", alignEnd: true };
   }
 
   if (!extra.enabled) {
-    return { value: "Off", label: "Extra" };
+    return { value: "Off", label: "Extra", alignEnd: true };
   }
 
   return {
-    value: `${formatMoney(extra.used, extra.currency)} / ${formatMoney(extra.limit, extra.currency)}`,
+    value: formatSpend(extra.used, extra.limit, extra.currency),
     label: "Extra",
-    percent: extra.limit > 0 ? (extra.used / extra.limit) * 100 : 0,
+    alignEnd: true,
   };
 };
 
@@ -132,10 +157,11 @@ const renderProvider = (
   const info = PROVIDER_INFO[provider];
 
   const header = createElement("div", "provider-header");
-  header.append(
-    createElement("h2", "provider-name", info.name),
-    createElement("span", "provider-plan", info.plan),
-  );
+  header.append(createElement("h2", "provider-name", info.name));
+  // The plan comes with each reading, so it appears after the first one.
+  if (state.usage?.plan) {
+    header.append(createElement("span", "provider-plan", formatPlan(state.usage.plan)));
+  }
   section.append(header);
 
   if (state.usage) {
@@ -172,18 +198,31 @@ export const renderPanel = (
   now: Date,
   actions: PanelActions,
 ): void => {
-  const refresh = createButton(
-    "refresh primary",
-    view.refreshing ? "Refreshing…" : "Refresh",
+  const refresh = createIconButton(
+    "refresh",
+    view.refreshing ? "Refreshing" : "Refresh",
+    "Refresh now",
     actions.onRefresh,
   );
   refresh.disabled = view.refreshing;
+  refresh.classList.toggle("spinning", view.refreshing);
+
+  // The panel offers the standalone window; the window offers pinning on top instead.
+  const secondary =
+    view.mode === "panel"
+      ? createIconButton("appWindow", "Window", "Open in a separate window", actions.onOpenWindow)
+      : createIconButton(
+          view.alwaysOnTop ? "pinned" : "pin",
+          view.alwaysOnTop ? "Pinned" : "Pin",
+          view.alwaysOnTop ? "Stop keeping on top" : "Keep on top of other windows",
+          actions.onToggleAlwaysOnTop,
+        );
+  secondary.classList.toggle("active", view.mode === "window" && view.alwaysOnTop);
 
   const header = createElement("header", "panel-header");
-  const refreshGroup = createElement("div", "refresh-group");
-  refreshGroup.append(refresh, createElement("div", "refresh-note", AUTO_REFRESH_NOTE));
-  header.append(createElement("span", "panel-title", "ai-usage"), refreshGroup);
+  header.append(secondary, refresh);
 
+  // The standalone window has the app menu and the Dock for these, so it skips the footer.
   const footer = createElement("footer", "panel-footer");
   footer.append(
     createButton("menu-item", "Help & setup…", actions.onHelp),
@@ -194,6 +233,6 @@ export const renderPanel = (
   root.replaceChildren(
     header,
     ...PROVIDERS.map((provider) => renderProvider(provider, view.states[provider], now, actions)),
-    footer,
+    ...(view.mode === "panel" ? [footer] : []),
   );
 };

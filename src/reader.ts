@@ -1,7 +1,13 @@
 import type { ExtraUsage, ProviderState, UsageWindow } from "./usage";
 
 export type ReadResult =
-  | { kind: "ok"; fiveHour: UsageWindow; sevenDay: UsageWindow; extra: ExtraUsage | null }
+  | {
+      kind: "ok";
+      plan: string | null;
+      fiveHour: UsageWindow;
+      sevenDay: UsageWindow;
+      extra: ExtraUsage | null;
+    }
   | { kind: "login_required" }
   | { kind: "error"; message: string };
 
@@ -116,7 +122,9 @@ export const parseReaderOutput = (output: string): ReadResult => {
       return { kind: "error", message: STATUS_ERRORS.unexpected_response };
     }
 
-    return { kind: "ok", fiveHour, sevenDay, extra: parseExtra(data.extra) };
+    const plan = typeof data.plan === "string" && data.plan !== "" ? data.plan : null;
+
+    return { kind: "ok", plan, fiveHour, sevenDay, extra: parseExtra(data.extra) };
   }
 
   if (data.status === "http_error") {
@@ -133,7 +141,13 @@ export const applyReadResult = (
 ): ProviderState => {
   if (result.kind === "ok") {
     return {
-      usage: { fiveHour: result.fiveHour, sevenDay: result.sevenDay, extra: result.extra, readAt },
+      usage: {
+        plan: result.plan,
+        fiveHour: result.fiveHour,
+        sevenDay: result.sevenDay,
+        extra: result.extra,
+        readAt,
+      },
       error: null,
       needsLogin: false,
     };

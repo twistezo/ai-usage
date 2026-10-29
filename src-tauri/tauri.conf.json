@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "panel",
-        "title": "ai-usage",
+        "title": "",
         "width": 340,
         "height": 480,
         "visible": false,

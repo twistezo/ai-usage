@@ -7,13 +7,15 @@ const fullDateTimeFormat = new Intl.DateTimeFormat("en-GB", {
   timeStyle: "short",
 });
 
-// en-US so that USD shows as "$1.18"; other currencies keep their own symbol.
-export const formatMoney = (amount: number, currency: string): string => {
-  try {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount);
-  } catch {
-    return `${amount.toFixed(2)} ${currency}`;
-  }
+// "1.18 / 1.50 EUR": the currency code from the API, shown once.
+export const formatSpend = (used: number, limit: number, currency: string): string =>
+  `${used.toFixed(2)} / ${limit.toFixed(2)} ${currency}`;
+
+// "team" becomes "Team", "pro_lite" becomes "Pro lite".
+export const formatPlan = (plan: string): string => {
+  const words = plan.split("_").join(" ");
+
+  return words.charAt(0).toUpperCase() + words.slice(1);
 };
 
 export const formatPercent = (utilization: number): string => `${Math.round(utilization)}%`;

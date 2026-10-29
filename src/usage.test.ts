@@ -5,6 +5,7 @@ import { isStale, type ProviderUsage } from "./usage";
 describe("isStale", () => {
   const now = new Date("2026-10-29T12:00:00Z");
   const readAt = (minutesAgo: number): ProviderUsage => ({
+    plan: null,
     fiveHour: { utilization: 0, resetsAt: null },
     sevenDay: { utilization: 0, resetsAt: null },
     extra: null,

@@ -2,9 +2,9 @@ export const PROVIDERS = ["codex", "claude"] as const;
 export type ProviderId = (typeof PROVIDERS)[number];
 
 // `account` is the service the user logs in to.
-export const PROVIDER_INFO: Record<ProviderId, { name: string; plan: string; account: string }> = {
-  codex: { name: "Codex", plan: "Plus", account: "ChatGPT" },
-  claude: { name: "Claude", plan: "Pro", account: "Claude" },
+export const PROVIDER_INFO: Record<ProviderId, { name: string; account: string }> = {
+  codex: { name: "Codex", account: "ChatGPT" },
+  claude: { name: "Claude", account: "Claude" },
 };
 
 // `resetsAt` is null when the window has not started, e.g. no usage yet.
@@ -19,7 +19,9 @@ export type ExtraUsage =
   | { kind: "spend"; enabled: boolean; used: number; limit: number; currency: string }
   | { kind: "credits"; hasCredits: boolean; unlimited: boolean; balance: number };
 
+// `plan` is the subscription as the service names it, e.g. "plus" or "team".
 export type ProviderUsage = {
+  plan: string | null;
   fiveHour: UsageWindow;
   sevenDay: UsageWindow;
   extra: ExtraUsage | null;
