@@ -26,9 +26,9 @@ export type PanelActions = {
   onRefresh: () => void;
   onOpenWindow: () => void;
   onToggleAlwaysOnTop: () => void;
+  onClose: () => void;
   onLogin: (provider: ProviderId) => void;
   onHelp: () => void;
-  onAbout: () => void;
   onQuit: () => void;
 };
 
@@ -221,12 +221,16 @@ export const renderPanel = (
 
   const header = createElement("header", "panel-header");
   header.append(secondary, refresh);
+  // The window has no title bar, so its header closes and moves it.
+  if (view.mode === "window") {
+    header.append(createIconButton("close", "Close", "Close the window", actions.onClose));
+    header.dataset.tauriDragRegion = "";
+  }
 
   // The standalone window has the app menu and the Dock for these, so it skips the footer.
   const footer = createElement("footer", "panel-footer");
   footer.append(
-    createButton("menu-item", "Help & setup…", actions.onHelp),
-    createButton("menu-item", "About…", actions.onAbout),
+    createButton("menu-item", "Help & about…", actions.onHelp),
     createButton("menu-item", "Quit", actions.onQuit),
   );
 

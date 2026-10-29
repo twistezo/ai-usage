@@ -37,17 +37,20 @@ const formatDuration = (durationMs: number): string => {
   return `${minutes}m`;
 };
 
+const RESET_MARK = "↻";
+
+// "↻ 4h 22m" is the time left until the window resets.
 export const formatReset = (resetsAt: Date | null, now: Date): string => {
   if (!resetsAt) {
-    return "Window not started";
+    return "Not started";
   }
 
   const remainingMs = resetsAt.getTime() - now.getTime();
   if (remainingMs <= 0) {
-    return "Already reset";
+    return `${RESET_MARK} now`;
   }
 
-  return `Resets in ${formatDuration(remainingMs)}`;
+  return `${RESET_MARK} ${formatDuration(remainingMs)}`;
 };
 
 export const formatFullDate = (date: Date): string => fullDateTimeFormat.format(date);

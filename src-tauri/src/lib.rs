@@ -95,12 +95,7 @@ fn open_info_window(app: &AppHandle, label: &str, title: &str, page: &str) -> ta
 
 #[tauri::command]
 fn open_help(app: AppHandle) -> tauri::Result<()> {
-    open_info_window(&app, "help", "Help & setup", "help.html")
-}
-
-#[tauri::command]
-fn open_about(app: AppHandle) -> tauri::Result<()> {
-    open_info_window(&app, "about", "About", "about.html")
+    open_info_window(&app, "help", "Help & about", "help.html")
 }
 
 #[tauri::command]
@@ -121,6 +116,26 @@ fn open_login(app: AppHandle, provider: session_reader::Provider) -> tauri::Resu
     session_reader::open_login(&app, provider)
 }
 
+// A development build is a bare executable, so macOS shows a generic icon once the app
+// joins the Dock; the bundled app gets its icon from icon.icns instead.
+#[cfg(target_os = "macos")]
+fn set_dock_icon(app: &AppHandle) {
+    let _ = app.run_on_main_thread(|| {
+        use objc2::{AllocAnyThread, MainThreadMarker};
+        use objc2_app_kit::{NSApplication, NSImage};
+        use objc2_foundation::NSData;
+
+        let Some(main_thread) = MainThreadMarker::new() else {
+            return;
+        };
+        let data = NSData::with_bytes(include_bytes!("../icons/icon.png"));
+        if let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) {
+            let application = NSApplication::sharedApplication(main_thread);
+            unsafe { application.setApplicationIconImage(Some(&image)) };
+        }
+    });
+}
+
 // The standalone window shows the panel view in a regular macOS window.
 // While it is open the app joins the Dock and the app switcher, so it cannot get lost.
 #[tauri::command]
@@ -129,6 +144,8 @@ fn open_window(app: AppHandle) -> tauri::Result<()> {
         let _ = panel.hide();
     }
     app.set_activation_policy(ActivationPolicy::Regular)?;
+    #[cfg(target_os = "macos")]
+    set_dock_icon(&app);
 
     if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
         window.show()?;
@@ -136,9 +153,13 @@ fn open_window(app: AppHandle) -> tauri::Result<()> {
         return window.set_focus();
     }
 
+    // No title bar: the page provides the close button and the drag area.
+    // Transparent, so the page can draw rounded corners (needs `macOSPrivateApi`).
     // The page fits the height to its content; the position is restored by the window-state plugin.
     let window = WebviewWindowBuilder::new(&app, WINDOW_LABEL, WebviewUrl::App("index.html".into()))
-        .title("")
+        .title("ai-usage")
+        .decorations(false)
+        .transparent(true)
         .inner_size(340.0, 480.0)
         .resizable(false)
         .build()?;
@@ -220,7 +241,6 @@ pub fn run() {
             open_window,
             open_login,
             open_help,
-            open_about,
             quit
         ])
         .run(tauri::generate_context!())

@@ -4,13 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="/src/styles.css" />
-    <title>Help &amp; setup</title>
+    <title>Help &amp; about</title>
+    <script type="module" src="/src/help.ts"></script>
     <script type="module" src="/src/info-page.ts"></script>
   </head>
 
   <body>
     <main class="info-page">
-      <h1>Help &amp; setup</h1>
+      <header class="app-intro">
+        <h1>ai-usage</h1>
+        <p class="muted"><span id="version"></span>Author: twistezo</p>
+      </header>
 
       <p>
         ai-usage keeps its own saved Claude and ChatGPT sessions and reads your

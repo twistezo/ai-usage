@@ -41,6 +41,8 @@ const saveAlwaysOnTop = (value: boolean): void => {
 
 const currentWindow = getCurrentWindow();
 const mode: ViewMode = currentWindow.label === WINDOW_LABEL ? "window" : "panel";
+// Lets the stylesheet draw the panel and the window as a rounded card.
+document.documentElement.dataset.mode = mode;
 const app = document.querySelector<HTMLElement>("#app");
 const view: PanelView = {
   mode,
@@ -92,9 +94,9 @@ if (app) {
     onRefresh: () => void refresh(),
     onOpenWindow: () => void invoke("open_window"),
     onToggleAlwaysOnTop: () => void toggleAlwaysOnTop(),
+    onClose: () => void currentWindow.close(),
     onLogin: (provider) => void invoke("open_login", { provider }),
     onHelp: () => void invoke("open_help"),
-    onAbout: () => void invoke("open_about"),
     onQuit: () => void invoke("quit"),
   };
 
