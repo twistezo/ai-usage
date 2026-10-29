@@ -1,0 +1,25 @@
+[package]
+name = "ai-usage"
+version = "0.1.0"
+description = "Menu bar panel with Codex and Claude usage limits"
+authors = ["Łukasz Kółko"]
+edition = "2024"
+
+[lib]
+# The `_lib` suffix keeps the lib name distinct from the bin name.
+name = "ai_usage_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+serde = { version = "1", features = ["derive"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

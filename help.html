@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <title>Pomoc i konfiguracja</title>
+  </head>
+
+  <body>
+    <main class="info-page">
+      <h1>Pomoc i konfiguracja</h1>
+
+      <p>
+        AI Usage odczytuje limity przez zalogowany Google Chrome. Odczyt wykonuje
+        sam Chrome w kartach Claude i ChatGPT; cookies i tokeny nie opuszczają
+        przeglądarki. Do aplikacji trafiają tylko procenty zużycia i terminy resetów.
+      </p>
+
+      <h2>Jednorazowa konfiguracja</h2>
+      <ol>
+        <li>Zaloguj się w Chrome do <code>claude.ai</code> i <code>chatgpt.com</code>.</li>
+        <li>
+          W Chrome wybierz <strong>Widok → Deweloper → Zezwól na kod JavaScript z Apple Events</strong>.
+        </li>
+        <li>
+          Przy pierwszym odświeżeniu macOS zapyta, czy AI Usage może sterować
+          aplikacją Google Chrome. Wybierz <strong>OK</strong>.
+        </li>
+      </ol>
+
+      <h2>Gdy odświeżenie się nie udaje</h2>
+      <ul>
+        <li>
+          Odmówiłeś zgody macOS: <strong>Ustawienia systemowe → Prywatność i ochrona →
+          Automatyzacja → AI Usage</strong>, włącz Google Chrome.
+        </li>
+        <li>Sesja wygasła: zaloguj się ponownie w Chrome i kliknij „Odśwież”.</li>
+        <li>Chrome pokazuje weryfikację: przejdź ją w karcie, potem odśwież.</li>
+      </ul>
+    </main>
+  </body>
+</html>
