@@ -220,12 +220,16 @@ html[data-mode] #app {
 }
 
 .icon-button:hover,
-.icon-button:focus-visible,
-.icon-button.active {
+.icon-button:focus-visible {
   outline: none;
   color: var(--accent);
   border-color: var(--accent);
   background: var(--hover);
+}
+
+/* A pinned window shows it through the icon color only, not a highlighted frame. */
+.icon-button.active {
+  color: var(--accent);
 }
 
 /* Footer items only share the buttons' highlight background. */
