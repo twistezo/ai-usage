@@ -2,6 +2,17 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [SemVer](https://semver.org/).
 
+## [1.2.1] - 2026-10-30
+
+Rounder corners.
+
+### Added
+- `ARCHITECTURE.md` with the windows, the reading flow and the result states.
+
+### Changed
+- Menu bar panel and standalone window use the 20px corner radius of macOS widgets.
+- README screenshots show the current window and the compact mode.
+
 ## [1.2.0] - 2026-10-30
 
 Compact window.
