@@ -15,7 +15,7 @@
 
 ```text
 Rust ──┬── tray icon ──► panel ── Window ──► standalone window
-       │                     └── Settings ──► providers on / off
+       │                     └── Settings ──► providers on / off, open at login (LaunchAgent)
        ├── timer 60 s (paused after 15 min without input)
        ├── reader windows (hidden)  ──► chatgpt.com, claude.ai
        └── login windows            ──► chatgpt.com, claude.ai

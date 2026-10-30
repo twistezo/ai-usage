@@ -218,6 +218,12 @@ pub fn run() {
                 .with_filter(|label| label == WINDOW_LABEL)
                 .build(),
         )
+        // "Open at login" in Settings; a LaunchAgent in ~/Library/LaunchAgents starts the app.
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .macos_launcher(tauri_plugin_autostart::MacosLauncher::LaunchAgent)
+                .build(),
+        )
         .manage(PanelState::default())
         .manage(session_reader::EnabledProviders::default())
         .setup(|app| {
