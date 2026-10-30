@@ -90,6 +90,8 @@ const createIconButton = (
   return button;
 };
 
+const fillWidth = (utilization: number): string => `${Math.min(Math.max(utilization, 0), 100)}%`;
+
 const renderMeter = (meter: Meter): HTMLElement => {
   const row = createElement("div", meter.alignEnd ? "usage-window align-end" : "usage-window");
 
@@ -114,7 +116,7 @@ const renderMeter = (meter: Meter): HTMLElement => {
   if (meter.percent !== undefined) {
     const bar = createElement("div", "bar");
     const fill = createElement("div", "bar-fill");
-    fill.style.width = `${Math.min(Math.max(meter.percent, 0), 100)}%`;
+    fill.style.width = fillWidth(meter.percent);
     bar.append(fill);
     row.append(bar);
   }
@@ -213,24 +215,37 @@ const createIcon = (icon: IconName, hint: string): HTMLElement => {
   return element;
 };
 
-// "29% 5h" with a mini bar next to it.
-const renderCompactMeter = (label: string, usageWindow: UsageWindow, now: Date): HTMLElement => {
-  const meter = createElement("div", "compact-meter");
-  meter.title = formatReset(usageWindow.resetsAt, now);
-  const bar = createElement("div", "bar");
-  const fill = createElement("div", "bar-fill");
-  fill.style.width = `${Math.min(Math.max(usageWindow.utilization, 0), 100)}%`;
-  bar.append(fill);
-  meter.append(
-    createElement("span", "usage-percent", formatPercent(usageWindow.utilization)),
+// "5h 29%": the label first, the reset countdown on hover.
+const renderCompactValue = (
+  label: string,
+  usageWindow: UsageWindow,
+  now: Date,
+  className: string,
+): HTMLElement => {
+  const value = createElement("span", `compact-value ${className}`);
+  value.title = formatReset(usageWindow.resetsAt, now);
+  value.append(
     createElement("span", "usage-label", label),
-    bar,
+    createElement("span", "usage-percent", formatPercent(usageWindow.utilization)),
   );
 
-  return meter;
+  return value;
 };
 
-// One row: name, 5h and 1w. Problems shrink to a warning icon whose tooltip explains them.
+// One bar split by height: the top half is 5h, the bottom half the week.
+const renderSplitBar = (fiveHour: UsageWindow, sevenDay: UsageWindow): HTMLElement => {
+  const bar = createElement("div", "split-bar");
+  const five = createElement("div", "split-fill five-hour");
+  five.style.width = fillWidth(fiveHour.utilization);
+  const week = createElement("div", "split-fill seven-day");
+  week.style.width = fillWidth(sevenDay.utilization);
+  bar.append(five, week);
+
+  return bar;
+};
+
+// Name and values on one line, the split bar under them.
+// Problems shrink to a warning icon whose tooltip explains them.
 const renderCompactProvider = (
   provider: ProviderId,
   state: ProviderState,
@@ -238,17 +253,22 @@ const renderCompactProvider = (
   actions: PanelActions,
 ): HTMLElement => {
   const row = createElement("section", `compact-row provider-${provider}`);
-  row.append(createElement("span", "provider-name", PROVIDER_INFO[provider].name));
+  const line = createElement("div", "compact-line");
+  line.append(
+    createElement("span", "provider-name", PROVIDER_INFO[provider].name),
+    createElement("span", "spacer"),
+  );
+  row.append(line);
 
   if (state.needsLogin) {
-    row.append(createButton("link-button", "Log in", () => actions.onLogin(provider)));
+    line.append(createButton("link-button", "Log in", () => actions.onLogin(provider)));
   } else if (state.usage) {
-    row.append(
-      renderCompactMeter("5h", state.usage.fiveHour, now),
-      renderCompactMeter("1w", state.usage.sevenDay, now),
+    line.append(
+      renderCompactValue("5h", state.usage.fiveHour, now, "five-hour"),
+      renderCompactValue("1w", state.usage.sevenDay, now, "seven-day"),
     );
   } else {
-    row.append(createElement("span", "empty", state.error ? "No data" : "Waiting…"));
+    line.append(createElement("span", "empty", state.error ? "No data" : "Waiting…"));
   }
 
   const problem =
@@ -257,7 +277,10 @@ const renderCompactProvider = (
       ? `Outdated: no successful update for over ${STALE_AFTER_MINUTES} minutes`
       : null);
   if (problem) {
-    row.append(createIcon("alert", problem));
+    line.append(createIcon("alert", problem));
+  }
+  if (state.usage && !state.needsLogin) {
+    row.append(renderSplitBar(state.usage.fiveHour, state.usage.sevenDay));
   }
 
   return row;

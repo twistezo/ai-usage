@@ -250,16 +250,37 @@ describe("renderPanel: compact window", () => {
     claude: reading({ sevenDay: { utilization: 46, resetsAt: later(2 * 1440 + 15 * 60) } }),
   };
 
-  it("shows one row per provider with percent, window label and bar", () => {
+  it("shows each provider's name with 5h and 1w values, label first", () => {
     render({ mode: "window", compact: true, states });
 
     const rows = [...root.querySelectorAll(".compact-row")];
     expect(rows.map((row) => row.querySelector(".provider-name")?.textContent)).toEqual(["Codex", "Claude"]);
-    expect([...rows[0].querySelectorAll(".compact-meter")].map((meter) => meter.textContent)).toEqual([
-      "29%5h",
-      "38%1w",
+    expect([...rows[0].querySelectorAll(".compact-value")].map((value) => value.textContent)).toEqual([
+      "5h29%",
+      "1w38%",
     ]);
-    expect(rows[0].querySelectorAll(".bar-fill")).toHaveLength(2);
+  });
+
+  it("draws both limits in one bar: 5h in the top half, the week in the bottom half", () => {
+    render({ mode: "window", compact: true, states });
+
+    const bars = root.querySelectorAll(".compact-row .split-bar");
+    const widths = (selector: string): string[] =>
+      [...root.querySelectorAll<HTMLElement>(`.compact-row ${selector}`)].map((fill) => fill.style.width);
+    expect(bars).toHaveLength(2);
+    expect(widths(".split-fill.five-hour")).toEqual(["29%", "13%"]);
+    expect(widths(".split-fill.seven-day")).toEqual(["38%", "46%"]);
+  });
+
+  it("keeps both halves inside the bar for usage over 100%", () => {
+    render({
+      mode: "window",
+      compact: true,
+      states: { ...states, codex: reading({ fiveHour: { utilization: 130, resetsAt: null } }) },
+    });
+
+    expect(root.querySelector<HTMLElement>(".provider-codex .split-fill.five-hour")?.style.width).toBe("100%");
+    expect(root.querySelector(".provider-codex .compact-value")?.textContent).toBe("5h130%");
   });
 
   it("leaves out resets, plan and extra usage, but keeps the reset in the tooltip", () => {
@@ -272,7 +293,7 @@ describe("renderPanel: compact window", () => {
     expect(root.querySelector(".usage-reset")).toBeNull();
     expect(root.querySelector(".provider-plan")).toBeNull();
     expect(root.textContent).not.toContain("Extra");
-    expect(root.querySelector<HTMLElement>(".compact-meter")?.title).toBe("↻ 4h 20m");
+    expect(root.querySelector<HTMLElement>(".compact-value")?.title).toBe("↻ 4h 20m");
   });
 
   it("names the expand button in its hint", () => {
@@ -305,6 +326,12 @@ describe("renderPanel: compact window", () => {
     );
   });
 
+  it("shows no bar until there is a reading", () => {
+    render({ mode: "window", compact: true });
+
+    expect(root.querySelector(".split-bar")).toBeNull();
+  });
+
   it("offers login right in the row when the session expired", () => {
     render({
       mode: "window",
@@ -315,6 +342,18 @@ describe("renderPanel: compact window", () => {
     buttonByText("Log in").click();
 
     expect(actions.onLogin).toHaveBeenCalledWith("claude");
+  });
+
+  it("replaces an old reading with the login link when the session expired", () => {
+    render({
+      mode: "window",
+      compact: true,
+      states: { ...states, claude: { ...states.claude, error: "Session expired or needs verification.", needsLogin: true } },
+    });
+
+    expect(root.querySelector(".provider-claude .split-bar")).toBeNull();
+    expect(root.querySelector(".provider-claude .compact-value")).toBeNull();
+    expect(root.querySelector(".provider-codex .split-bar")).not.toBeNull();
   });
 
   it("says when a provider has no data yet", () => {

@@ -1,4 +1,4 @@
-/* Light: Alucard. Dark: Dracula Pro. */
+/* Light: Alucard. Dark: Dracula Classic (draculatheme.com/spec). */
 :root {
   --background: #fffbeb;
   --surface: #f5f0dc;
@@ -27,16 +27,16 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #22212c;
-    --surface: #2c2b3a;
+    --background: #282a36;
+    --surface: #343746;
     --text: #f8f8f2;
-    --muted: #7970a9;
-    --separator: #454158;
-    --track: #454158;
+    --muted: #6272a4;
+    --separator: #44475a;
+    --track: #44475a;
     --hover: rgba(248, 248, 242, 0.08);
-    --accent: #9580ff;
-    --warning: #ffca80;
-    --danger: #ff9580;
+    --accent: #bd93f9;
+    --warning: #ffb86c;
+    --danger: #ff5555;
 
     --brand-codex: #f8f8f2;
   }
@@ -75,9 +75,9 @@ html[data-mode] #app {
   margin-bottom: 12px;
 }
 
+/* No separators between sections; spacing alone groups them. */
 .provider {
   padding: 10px 0 12px;
-  border-top: 1px solid var(--separator);
 }
 
 .provider-codex {
@@ -257,42 +257,79 @@ html[data-mode] #app {
   display: none;
 }
 
-/* Compact window: one row per provider. */
+/* Compact window: per provider, name and values over one split bar. */
 .compact .panel-header {
   margin-bottom: 8px;
 }
 
 .compact-row {
-  display: grid;
-  grid-template-columns: 52px 1fr 1fr auto;
-  align-items: center;
-  column-gap: 10px;
-  padding: 6px 0;
-  border-top: 1px solid var(--separator);
+  padding: 5px 0;
 }
 
-.compact-row .provider-name {
+.compact-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.compact-line .provider-name {
   font-size: 12px;
   font-weight: 600;
   color: var(--brand);
 }
 
-.compact-meter {
+.compact-line .spacer {
+  flex: 1;
+}
+
+.compact-value {
   display: flex;
   align-items: baseline;
   gap: 4px;
 }
 
-.compact-meter .bar {
-  flex: 1;
-  height: 4px;
-  margin: 0;
-  align-self: center;
+.compact-value .usage-percent {
+  font-size: 13px;
 }
 
-.compact-row .empty,
-.compact-row .link-button {
-  grid-column: 2 / 4;
+.compact-value.seven-day .usage-percent {
+  opacity: 0.75;
+}
+
+/* Top half 5h, bottom half the week, a 1px gap between them. */
+.split-bar {
+  position: relative;
+  height: 11px;
+  border-radius: 5px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.split-bar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 5px;
+  height: 1px;
+  background: var(--background);
+}
+
+.split-fill {
+  position: absolute;
+  left: 0;
+  height: 5px;
+  background: var(--brand);
+}
+
+.split-fill.five-hour {
+  top: 0;
+}
+
+.split-fill.seven-day {
+  bottom: 0;
+  opacity: 0.5;
 }
 
 .link-button {

@@ -2,6 +2,20 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [SemVer](https://semver.org/).
 
+## [1.3.0] - 2026-10-30
+
+Dracula Classic and a new compact window.
+
+### Added
+- Background refresh pauses after 15 minutes without mouse, trackpad or keyboard input; Refresh still reads right away.
+
+### Changed
+- Dark theme switched to Dracula Classic; the light theme stays Alucard.
+- Compact window: per provider, the name with `5h` and `1w` values on one line and a single bar under it, split into a 5h top half and a weekly bottom half.
+- Section separators removed; only the line above the menu bar panel footer remains.
+- The pinned button no longer gets a highlighted frame.
+- The production build signs the app ad hoc itself, so the bundle passes `codesign --verify` without a manual step.
+
 ## [1.2.1] - 2026-10-30
 
 Rounder corners.

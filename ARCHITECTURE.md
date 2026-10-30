@@ -15,7 +15,7 @@
 
 ```text
 Rust ──┬── tray icon ──► panel ── Window ──► standalone window
-       ├── timer 60 s
+       ├── timer 60 s (paused after 15 min without input)
        ├── reader windows (hidden)  ──► chatgpt.com, claude.ai
        └── login windows            ──► chatgpt.com, claude.ai
 ```
@@ -25,6 +25,9 @@ Panel and window run the same page; reader and login windows have no command per
 ## The reading flow
 
 ```text
+timer ──► no mouse, trackpad or keyboard input for 15 min? ── yes ──► skip this tick
+  │ no
+  ▼
 timer / Refresh ──► reader on the provider's site? ── no ──► back to the site
                             │ yes
                             ▼
@@ -45,5 +48,5 @@ ok          ──► new reading
 401 / 403   ──► "Log in to …" ──► login window ──► closed ──► reader reloads
 other error ──► message, last reading kept (never 0%)
 no answer in 20 s ──► "No answer from the site yet"
-older than 5 min  ──► "Outdated"
+older than 5 min  ──► "Outdated" (also after an idle pause, until the next tick)
 ```

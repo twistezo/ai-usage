@@ -15,6 +15,9 @@ const TITLE_PREFIX: &str = "__AIUSAGE__";
 const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 // Single-page apps grow when left open for days; a periodic reload keeps hidden pages small.
 const RELOAD_EVERY_TICKS: u32 = 60;
+// Background reads pause after this long without mouse, trackpad or keyboard input.
+// A manual Refresh still reads right away.
+const IDLE_PAUSE: Duration = Duration::from_secs(15 * 60);
 // Must match the event name listened to in src/main.ts.
 const REPORT_EVENT: &str = "usage-report";
 // Views that show readings: the menu bar panel and the standalone window.
@@ -191,17 +194,68 @@ pub fn open_login(app: &AppHandle, provider: Provider) -> tauri::Result<()> {
     window.set_focus()
 }
 
+/// Time since the last mouse, trackpad or keyboard event in this login session.
+#[cfg(target_os = "macos")]
+fn user_idle_time() -> Duration {
+    // CoreGraphics: combined session state, any input event type.
+    const COMBINED_SESSION_STATE: i32 = 0;
+    const ANY_INPUT_EVENT: u32 = u32::MAX;
+
+    #[link(name = "CoreGraphics", kind = "framework")]
+    unsafe extern "C" {
+        fn CGEventSourceSecondsSinceLastEventType(state: i32, event_type: u32) -> f64;
+    }
+
+    let seconds =
+        unsafe { CGEventSourceSecondsSinceLastEventType(COMBINED_SESSION_STATE, ANY_INPUT_EVENT) };
+
+    Duration::try_from_secs_f64(seconds).unwrap_or(Duration::ZERO)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn user_idle_time() -> Duration {
+    Duration::ZERO
+}
+
+fn is_user_away(idle: Duration) -> bool {
+    idle >= IDLE_PAUSE
+}
+
+#[derive(Debug, PartialEq)]
+enum TickAction {
+    Skip,
+    Refresh,
+    Reload,
+}
+
+/// Decides one timer tick. Idle ticks are skipped and do not count towards the hourly reload.
+fn next_tick(idle: Duration, tick: u32) -> (TickAction, u32) {
+    if is_user_away(idle) {
+        return (TickAction::Skip, tick);
+    }
+
+    let tick = tick.wrapping_add(1);
+    let action = if tick % RELOAD_EVERY_TICKS == 0 {
+        TickAction::Reload
+    } else {
+        TickAction::Refresh
+    };
+
+    (action, tick)
+}
+
 pub fn start_timer(app: AppHandle) {
     thread::spawn(move || {
         let mut tick: u32 = 0;
         loop {
             thread::sleep(REFRESH_INTERVAL);
-            tick = tick.wrapping_add(1);
+            let (action, next) = next_tick(user_idle_time(), tick);
+            tick = next;
             for provider in PROVIDERS {
-                let _ = if tick % RELOAD_EVERY_TICKS == 0 {
-                    reload(&app, provider)
-                } else {
-                    refresh(&app, provider)
+                let _ = match action {
+                    TickAction::Skip => Ok(()),
+                    TickAction::Refresh => refresh(&app, provider),
+                    TickAction::Reload => reload(&app, provider),
                 };
             }
         }
@@ -211,6 +265,56 @@ pub fn start_timer(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn background_reads_continue_while_the_user_is_active() {
+        assert!(!is_user_away(Duration::ZERO));
+        assert!(!is_user_away(Duration::from_secs(14 * 60 + 59)));
+    }
+
+    #[test]
+    fn background_reads_pause_after_15_minutes_without_input() {
+        assert!(is_user_away(Duration::from_secs(15 * 60)));
+        assert!(is_user_away(Duration::from_secs(3 * 60 * 60)));
+    }
+
+    const ACTIVE: Duration = Duration::from_secs(5);
+    const AWAY: Duration = Duration::from_secs(20 * 60);
+
+    #[test]
+    fn an_active_user_gets_a_refresh_every_tick() {
+        assert_eq!(next_tick(ACTIVE, 0), (TickAction::Refresh, 1));
+        assert_eq!(next_tick(ACTIVE, 7), (TickAction::Refresh, 8));
+    }
+
+    #[test]
+    fn every_60th_active_tick_reloads_the_pages_instead() {
+        assert_eq!(next_tick(ACTIVE, 59), (TickAction::Reload, 60));
+        assert_eq!(next_tick(ACTIVE, 60), (TickAction::Refresh, 61));
+    }
+
+    #[test]
+    fn an_away_user_gets_no_reads_and_the_hourly_count_waits() {
+        assert_eq!(next_tick(AWAY, 59), (TickAction::Skip, 59));
+    }
+
+    #[test]
+    fn reads_resume_on_the_first_tick_after_coming_back() {
+        let mut tick = 10;
+        for _ in 0..30 {
+            let (action, next) = next_tick(AWAY, tick);
+            assert_eq!(action, TickAction::Skip);
+            tick = next;
+        }
+
+        assert_eq!(next_tick(ACTIVE, tick), (TickAction::Refresh, 11));
+    }
+
+    #[test]
+    fn idle_time_is_readable_from_the_system() {
+        // Real call into CoreGraphics; any finite, non-negative value means the binding works.
+        assert!(user_idle_time() < Duration::from_secs(365 * 24 * 60 * 60));
+    }
 
     const MAIN_TS: &str = include_str!("../../src/main.ts");
     const CAPABILITIES: &str = include_str!("../capabilities/default.json");
