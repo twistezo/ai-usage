@@ -1,6 +1,6 @@
 [package]
 name = "ai-usage"
-version = "1.4.0"
+version = "1.5.0"
 description = "Menu bar panel with Codex and Claude usage limits"
 authors = ["twistezo"]
 edition = "2024"

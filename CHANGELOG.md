@@ -2,6 +2,13 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [SemVer](https://semver.org/).
 
+## [1.5.0] - 2026-10-30
+
+Open at login.
+
+### Added
+- Settings switch "Open at login" starts the app when you log in to macOS.
+
 ## [1.4.0] - 2026-10-30
 
 Choose your providers.
