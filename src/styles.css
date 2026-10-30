@@ -61,9 +61,10 @@ html[data-mode] {
   background-color: transparent;
 }
 
+/* Matches the corner radius of macOS widgets. */
 html[data-mode] #app {
   border: 1px solid var(--background);
-  border-radius: 10px;
+  border-radius: 20px;
   background-color: var(--background);
 }
 
