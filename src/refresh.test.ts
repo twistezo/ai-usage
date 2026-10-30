@@ -31,6 +31,13 @@ describe("manual refresh", () => {
     expect(twiceCodex.refreshing).toBe(true);
   });
 
+  it("waits only for the providers that are turned on", () => {
+    const onlyClaude = startRefresh(["claude"]);
+
+    expect(onlyClaude.refreshing).toBe(true);
+    expect(receiveReport(onlyClaude, "claude").refreshing).toBe(false);
+  });
+
   it("is not started by a background reading", () => {
     expect(receiveReport(IDLE, "codex").refreshing).toBe(false);
   });

@@ -2,6 +2,17 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [SemVer](https://semver.org/).
 
+## [1.4.0] - 2026-10-30
+
+Choose your providers.
+
+### Added
+- Settings window with a switch per provider; a provider turned off is hidden and never read in the background. At least one stays on, and the choice is remembered.
+
+### Changed
+- Menu bar panel footer reads Settings, Help, Quit; the Help window is renamed from Help & about.
+- Help describes the window, compact mode, Settings, the idle pause and the "No answer from the site yet" message.
+
 ## [1.3.0] - 2026-10-30
 
 Dracula Classic and a new compact window.

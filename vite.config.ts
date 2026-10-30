@@ -33,6 +33,7 @@ export default defineConfig(() => ({
       input: {
         panel: "index.html",
         help: "help.html",
+        settings: "settings.html",
       },
     },
   },

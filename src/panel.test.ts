@@ -27,6 +27,7 @@ const createActions = (): PanelActions => ({
   onToggleCompact: vi.fn(),
   onClose: vi.fn(),
   onLogin: vi.fn(),
+  onSettings: vi.fn(),
   onHelp: vi.fn(),
   onQuit: vi.fn(),
 });
@@ -37,7 +38,7 @@ let actions: PanelActions;
 const render = (view: Partial<PanelView> = {}): void => {
   renderPanel(
     root,
-    { mode: "panel", states: createEmptyStates(), refreshing: false, alwaysOnTop: false, compact: false, notice: null, ...view },
+    { mode: "panel", providers: ["codex", "claude"], states: createEmptyStates(), refreshing: false, alwaysOnTop: false, compact: false, notice: null, ...view },
     now,
     actions,
   );
@@ -182,18 +183,30 @@ describe("renderPanel: failed actions", () => {
 });
 
 describe("renderPanel: controls", () => {
-  it("offers the window, refresh, help and quit in the menu bar panel", () => {
+  it("offers the window, refresh, settings, help and quit in the menu bar panel", () => {
     render();
 
     buttonByText("Window").click();
     buttonByText("Refresh").click();
-    buttonByText("Help & about").click();
+    buttonByText("Settings").click();
+    buttonByText("Help").click();
     buttonByText("Quit").click();
 
     expect(actions.onOpenWindow).toHaveBeenCalledOnce();
     expect(actions.onRefresh).toHaveBeenCalledOnce();
+    expect(actions.onSettings).toHaveBeenCalledOnce();
     expect(actions.onHelp).toHaveBeenCalledOnce();
     expect(actions.onQuit).toHaveBeenCalledOnce();
+  });
+
+  it("labels the footer items without ellipses", () => {
+    render();
+
+    expect([...root.querySelectorAll("footer button")].map((button) => button.textContent)).toEqual([
+      "Settings",
+      "Help",
+      "Quit",
+    ]);
   });
 
   it("disables refresh while a refresh is running", () => {
@@ -367,5 +380,30 @@ describe("renderPanel: compact window", () => {
 
     expect(root.querySelector(".compact-row")).toBeNull();
     expect(root.textContent).not.toContain("Compact");
+  });
+});
+
+describe("renderPanel: chosen providers", () => {
+  const states = { codex: reading(), claude: reading() };
+
+  it("shows only the providers that are turned on", () => {
+    render({ providers: ["claude"], states });
+
+    expect(root.querySelector(".provider-codex")).toBeNull();
+    expect(root.querySelector(".provider-claude")).not.toBeNull();
+  });
+
+  it("does the same in the compact window", () => {
+    render({ mode: "window", compact: true, providers: ["codex"], states });
+
+    expect([...root.querySelectorAll(".compact-row .provider-name")].map((name) => name.textContent)).toEqual([
+      "Codex",
+    ]);
+  });
+
+  it("keeps the app's order whatever order the choice comes in", () => {
+    render({ providers: ["claude", "codex"], states });
+
+    expect([...root.querySelectorAll(".provider-name")].map((name) => name.textContent)).toEqual(["Codex", "Claude"]);
   });
 });

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="/src/styles.css" />
-    <title>Help &amp; about</title>
+    <title>Help</title>
     <script type="module" src="/src/help.ts"></script>
     <script type="module" src="/src/info-page.ts"></script>
   </head>
@@ -18,8 +18,9 @@
 
       <p>
         ai-usage keeps its own saved Claude and ChatGPT sessions and reads your
-        5h and weekly usage in the background every minute. The sessions never
-        leave the app; the panel only receives usage percentages and reset times.
+        5h, weekly and extra usage in the background every minute, pausing after
+        15 minutes without input. The sessions never leave the app; the panel only
+        receives usage and reset times.
       </p>
 
       <h2>First run</h2>
@@ -30,13 +31,22 @@
           open in your browser instead of the app.
         </li>
         <li>Close the login window. Usage appears within a few seconds.</li>
+        <li>Using only one of them? Turn the other off in “Settings”.</li>
       </ol>
+
+      <h2>Using it</h2>
+      <ul>
+        <li>“Refresh” reads usage right away instead of waiting for the next minute.</li>
+        <li>“Window” opens the same view as a window you can drag anywhere; pin it to keep it on top.</li>
+        <li>Compact mode shrinks the window to one line and one bar per provider: top half 5h, bottom half the week.</li>
+        <li>Hover a reset to see its exact date and time; in compact mode, hover a value to see when it resets.</li>
+      </ul>
 
       <h2>Troubleshooting</h2>
       <ul>
         <li>“Session expired or needs verification”: click “Log in to…” and log in again.</li>
-        <li>“Outdated”: no update has succeeded for a few minutes; check your connection.</li>
-        <li>“Refresh” reads usage right away instead of waiting for the next minute.</li>
+        <li>“Outdated”: no update for over 5 minutes, after a connection problem or while reading is paused for inactivity.</li>
+        <li>“No answer from the site yet”: the site did not respond within 20 seconds; it retries every minute.</li>
       </ul>
     </main>
   </body>

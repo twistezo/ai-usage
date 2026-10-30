@@ -14,7 +14,8 @@ import {
   togglePersisted,
   type RefreshState,
 } from "./refresh";
-import { createEmptyStates, PROVIDERS, PROVIDER_INFO, type ProviderId } from "./usage";
+import { readEnabledProviders } from "./providers";
+import { createEmptyStates, PROVIDER_INFO, type ProviderId } from "./usage";
 import { fitWindowToContent } from "./window-size";
 
 const PANEL_WIDTH = 340;
@@ -24,6 +25,8 @@ const REFRESH_TIMEOUT_MS = 20_000;
 const RERENDER_INTERVAL_MS = 60_000;
 // Must match REPORT_EVENT in src-tauri/src/session_reader.rs.
 const REPORT_EVENT = "usage-report";
+// Must match PROVIDERS_EVENT in src-tauri/src/session_reader.rs.
+const PROVIDERS_EVENT = "providers-changed";
 
 // Must match WINDOW_LABEL in src-tauri/src/lib.rs.
 const WINDOW_LABEL = "window";
@@ -46,6 +49,7 @@ document.documentElement.dataset.mode = mode;
 const app = document.querySelector<HTMLElement>("#app");
 const view: PanelView = {
   mode,
+  providers: readEnabledProviders(localStorage),
   states: createEmptyStates(),
   refreshing: false,
   alwaysOnTop: mode === "window" && readFlag(localStorage, ALWAYS_ON_TOP_KEY),
@@ -79,7 +83,7 @@ if (app) {
 
   const refresh = async (): Promise<void> => {
     window.clearTimeout(refreshTimeout);
-    setRefreshState(startRefresh());
+    setRefreshState(startRefresh(view.providers));
     render();
     refreshTimeout = window.setTimeout(() => failPending(NO_ANSWER), REFRESH_TIMEOUT_MS);
 
@@ -129,21 +133,35 @@ if (app) {
         () => invoke("open_login", { provider }),
         `Could not open the ${PROVIDER_INFO[provider].account} login window.`,
       ),
-    onHelp: () => void attempt(() => invoke("open_help"), "Could not open Help & about."),
+    onSettings: () => void attempt(() => invoke("open_settings"), "Could not open Settings."),
+    onHelp: () => void attempt(() => invoke("open_help"), "Could not open Help."),
     onQuit: () => void attempt(() => invoke("quit"), "Could not quit. Try again."),
   };
 
+  // The Settings window changes the providers; a provider turned off no longer waits for a report.
+  void listen<ProviderId[]>(PROVIDERS_EVENT, ({ payload }) => {
+    view.providers = payload;
+    for (const provider of refreshState.pending) {
+      if (!payload.includes(provider)) {
+        setRefreshState(receiveReport(refreshState, provider));
+      }
+    }
+    render();
+  });
+
   // Readings arrive from hidden windows: every minute and after each refresh.
-  // The first refresh waits for the listener, so the startup reading is not lost.
+  // The first refresh waits for the listener, so the startup reading is not lost;
+  // before it, Rust learns which providers are on.
   void listen<UsageReport>(REPORT_EVENT, ({ payload }) => {
     const result = parseReaderOutput(payload.output);
     view.states[payload.provider] = applyReadResult(view.states[payload.provider], result, new Date());
     setRefreshState(receiveReport(refreshState, payload.provider));
     render();
   })
+    .then(() => invoke("set_providers", { providers: view.providers }))
     .then(() => refresh())
     .catch(() => {
-      view.states = markUnanswered(view.states, new Set(PROVIDERS), READER_UNAVAILABLE, new Date());
+      view.states = markUnanswered(view.states, new Set(view.providers), READER_UNAVAILABLE, new Date());
       render();
     });
 

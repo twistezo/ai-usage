@@ -117,17 +117,30 @@ fn open_info_window(app: &AppHandle, label: &str, title: &str, page: &str) -> ta
 
 #[tauri::command]
 fn open_help(app: AppHandle) -> tauri::Result<()> {
-    open_info_window(&app, "help", "Help & about", "help.html")
+    open_info_window(&app, "help", "Help", "help.html")
 }
 
-// Every provider is refreshed even when another fails; the first error is reported.
+// Every enabled provider is refreshed even when another fails; the first error is reported.
 #[tauri::command]
 fn refresh_usage(app: AppHandle) -> tauri::Result<()> {
     first_error(
-        session_reader::PROVIDERS
+        session_reader::enabled_providers(&app)
             .into_iter()
             .map(|provider| session_reader::refresh(&app, provider)),
     )
+}
+
+#[tauri::command]
+fn set_providers(
+    app: AppHandle,
+    providers: Vec<session_reader::Provider>,
+) -> Vec<session_reader::Provider> {
+    session_reader::set_enabled_providers(&app, &providers)
+}
+
+#[tauri::command]
+fn open_settings(app: AppHandle) -> tauri::Result<()> {
+    open_info_window(&app, "settings", "Settings", "settings.html")
 }
 
 #[tauri::command]
@@ -206,6 +219,7 @@ pub fn run() {
                 .build(),
         )
         .manage(PanelState::default())
+        .manage(session_reader::EnabledProviders::default())
         .setup(|app| {
             // Menu bar only: no Dock icon, no app switcher entry.
             app.set_activation_policy(ActivationPolicy::Accessory);
@@ -262,6 +276,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             refresh_usage,
+            set_providers,
+            open_settings,
             open_window,
             open_login,
             open_help,

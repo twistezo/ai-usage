@@ -5,7 +5,7 @@
 | Part | Technology |
 |---|---|
 | App shell, windows, tray, timer | Tauri 2, Rust |
-| Views (panel, window, help) | TypeScript, plain DOM, CSS, Vite |
+| Views (panel, window, settings, help) | TypeScript, plain DOM, CSS, Vite |
 | Page scripts (inside the sites) | Plain JavaScript |
 | Icons | Tabler Icons |
 | Tests | Vitest with happy-dom, `cargo test` |
@@ -15,12 +15,13 @@
 
 ```text
 Rust ──┬── tray icon ──► panel ── Window ──► standalone window
+       │                     └── Settings ──► providers on / off
        ├── timer 60 s (paused after 15 min without input)
        ├── reader windows (hidden)  ──► chatgpt.com, claude.ai
        └── login windows            ──► chatgpt.com, claude.ai
 ```
 
-Panel and window run the same page; reader and login windows have no command permissions and share one WebKit store.
+Panel and window run the same page; reader and login windows have no command permissions and share one WebKit store. A provider turned off in Settings is hidden and gets no reader window.
 
 ## The reading flow
 
@@ -50,3 +51,7 @@ other error ──► message, last reading kept (never 0%)
 no answer in 20 s ──► "No answer from the site yet"
 older than 5 min  ──► "Outdated" (also after an idle pause, until the next tick)
 ```
+
+## The credentials
+
+Session cookies live in the app's WebKit store (`~/Library/HTTPStorages/com.twistezo.ai-usage.binarycookies`), protected only by the macOS account; the Codex token stays in page memory for one read. Nothing goes to Keychain or leaves the page.

@@ -10,7 +10,10 @@ export type RefreshState = {
 
 export const IDLE: RefreshState = { refreshing: false, pending: new Set() };
 
-export const startRefresh = (): RefreshState => ({ refreshing: true, pending: new Set(PROVIDERS) });
+export const startRefresh = (providers: readonly ProviderId[] = PROVIDERS): RefreshState => ({
+  refreshing: true,
+  pending: new Set(providers),
+});
 
 export const receiveReport = (state: RefreshState, provider: ProviderId): RefreshState => {
   if (!state.refreshing) {

@@ -1,4 +1,4 @@
-use std::{thread, time::Duration};
+use std::{sync::Mutex, thread, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use tauri::{
@@ -24,7 +24,7 @@ const REPORT_EVENT: &str = "usage-report";
 const VIEW_LABELS: [&str; 2] = ["panel", "window"];
 const APP_NAME: &str = "ai-usage";
 
-#[derive(Clone, Copy, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Provider {
     Codex,
@@ -32,6 +32,60 @@ pub enum Provider {
 }
 
 pub const PROVIDERS: [Provider; 2] = [Provider::Codex, Provider::Claude];
+
+// Must match PROVIDERS_EVENT in src/main.ts.
+const PROVIDERS_EVENT: &str = "providers-changed";
+
+/// Providers the user keeps on; only these are shown and read in the background.
+pub struct EnabledProviders(Mutex<Vec<Provider>>);
+
+impl Default for EnabledProviders {
+    fn default() -> Self {
+        Self(Mutex::new(PROVIDERS.to_vec()))
+    }
+}
+
+/// The app's order without repeats; an empty choice means all providers.
+fn enabled_or_all(chosen: &[Provider]) -> Vec<Provider> {
+    let enabled: Vec<Provider> = PROVIDERS
+        .into_iter()
+        .filter(|provider| chosen.contains(provider))
+        .collect();
+
+    if enabled.is_empty() {
+        PROVIDERS.to_vec()
+    } else {
+        enabled
+    }
+}
+
+pub fn enabled_providers(app: &AppHandle) -> Vec<Provider> {
+    app.state::<EnabledProviders>()
+        .0
+        .lock()
+        .map(|enabled| enabled.clone())
+        .unwrap_or_else(|_| PROVIDERS.to_vec())
+}
+
+/// Stores the choice, stops reading the providers turned off and tells the views.
+pub fn set_enabled_providers(app: &AppHandle, chosen: &[Provider]) -> Vec<Provider> {
+    let enabled = enabled_or_all(chosen);
+    if let Ok(mut current) = app.state::<EnabledProviders>().0.lock() {
+        *current = enabled.clone();
+    }
+    for provider in PROVIDERS {
+        if !enabled.contains(&provider) {
+            if let Some(window) = app.get_webview_window(&provider.reader_label()) {
+                let _ = window.destroy();
+            }
+        }
+    }
+    for label in VIEW_LABELS {
+        let _ = app.emit_to(label, PROVIDERS_EVENT, enabled.clone());
+    }
+
+    enabled
+}
 
 struct ProviderSite {
     id: &'static str,
@@ -251,7 +305,7 @@ pub fn start_timer(app: AppHandle) {
             thread::sleep(REFRESH_INTERVAL);
             let (action, next) = next_tick(user_idle_time(), tick);
             tick = next;
-            for provider in PROVIDERS {
+            for provider in enabled_providers(&app) {
                 let _ = match action {
                     TickAction::Skip => Ok(()),
                     TickAction::Refresh => refresh(&app, provider),
@@ -308,6 +362,27 @@ mod tests {
         }
 
         assert_eq!(next_tick(ACTIVE, tick), (TickAction::Refresh, 11));
+    }
+
+    #[test]
+    fn enabled_providers_keep_the_app_order_without_repeats() {
+        let chosen = [Provider::Claude, Provider::Codex, Provider::Claude];
+
+        assert_eq!(
+            enabled_or_all(&chosen),
+            vec![Provider::Codex, Provider::Claude]
+        );
+        assert_eq!(enabled_or_all(&[Provider::Claude]), vec![Provider::Claude]);
+    }
+
+    #[test]
+    fn an_empty_choice_enables_every_provider() {
+        assert_eq!(enabled_or_all(&[]), PROVIDERS.to_vec());
+    }
+
+    #[test]
+    fn providers_event_matches_the_panel() {
+        assert!(MAIN_TS.contains(&format!("const PROVIDERS_EVENT = \"{PROVIDERS_EVENT}\";")));
     }
 
     #[test]

@@ -20,6 +20,7 @@ export type ViewMode = (typeof VIEW_MODES)[number];
 // `compact` shrinks the standalone window to one row per provider.
 export type PanelView = {
   mode: ViewMode;
+  providers: readonly ProviderId[];
   states: UsageStates;
   refreshing: boolean;
   alwaysOnTop: boolean;
@@ -34,6 +35,7 @@ export type PanelActions = {
   onToggleCompact: () => void;
   onClose: () => void;
   onLogin: (provider: ProviderId) => void;
+  onSettings: () => void;
   onHelp: () => void;
   onQuit: () => void;
 };
@@ -338,14 +340,17 @@ export const renderPanel = (
   // The standalone window has the app menu and the Dock for these, so it skips the footer.
   const footer = createElement("footer", "panel-footer");
   footer.append(
-    createButton("menu-item", "Help & about…", actions.onHelp),
+    createButton("menu-item", "Settings", actions.onSettings),
+    createButton("menu-item", "Help", actions.onHelp),
     createButton("menu-item", "Quit", actions.onQuit),
   );
 
   root.replaceChildren(
     header,
     ...(view.notice ? [createElement("div", "error notice", view.notice)] : []),
-    ...PROVIDERS.map((provider) => renderSection(provider, view.states[provider], now, actions)),
+    ...PROVIDERS.filter((provider) => view.providers.includes(provider)).map((provider) =>
+      renderSection(provider, view.states[provider], now, actions),
+    ),
     ...(view.mode === "panel" ? [footer] : []),
   );
 };
