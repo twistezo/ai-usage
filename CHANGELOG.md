@@ -2,6 +2,11 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [SemVer](https://semver.org/).
 
+## [1.5.1] - 2026-11-05
+
+### Security
+- npm dependency resolution now requires package versions to be at least seven days old.
+
 ## [1.5.0] - 2026-10-30
 
 Open at login.
